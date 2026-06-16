@@ -8,7 +8,6 @@ import com.google.gson.JsonParser;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
-import ecoalerter.model.MeteoData;
 import ecoalerter.model.StationType;
 import ecoalerter.model.Warning;
 import ecoalerter.model.WarningLevel;
@@ -18,7 +17,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * Serwis pobierający, parsujący i filtrujący ostrzeżenia pogodowe

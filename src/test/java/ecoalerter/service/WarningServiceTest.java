@@ -1,4 +1,4 @@
-package .ecoalerter.service;
+package ecoalerter.service;
 
 public class WarningServiceTest {
 
