@@ -1,4 +1,4 @@
-package main.java.pl.ecoalerter.gui.panels;
+package pl.ecoalerter.gui.panels;
 
 public class DataViewPanel {
 

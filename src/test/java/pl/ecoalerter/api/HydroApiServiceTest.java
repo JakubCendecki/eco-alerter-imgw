@@ -1,4 +1,4 @@
-package test.java.pl.ecoalerter.api;
+package pl.ecoalerter.api;
 
 public class HydroApiServiceTest {
 

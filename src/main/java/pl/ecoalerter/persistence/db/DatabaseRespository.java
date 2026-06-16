@@ -1,5 +1,5 @@
 package pl.ecoalerter.persistence.db;
 
-public class ConnectionPool {
+public class DatabaseRespository {
 
 }

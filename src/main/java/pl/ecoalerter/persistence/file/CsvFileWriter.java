@@ -1,4 +1,4 @@
-package main.java.pl.ecoalerter.persistence.file;
+package pl.ecoalerter.persistence.file;
 
 public class CsvFileWriter {
 

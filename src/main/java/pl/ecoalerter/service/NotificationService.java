@@ -1,4 +1,4 @@
-package main.java.pl.ecoalerter.service;
+package pl.ecoalerter.service;
 
 public class NotificationService {
 

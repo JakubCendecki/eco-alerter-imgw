@@ -1,4 +1,4 @@
-package test.java.pl.ecoalerter.persistence;
+package pl.ecoalerter.persistence;
 
 public class DatabaseRepositoryTest {
 

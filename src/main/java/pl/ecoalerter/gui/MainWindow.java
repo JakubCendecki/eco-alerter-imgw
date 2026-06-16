@@ -1,4 +1,4 @@
-package main.java.pl.ecoalerter.gui;
+package pl.ecoalerter.gui;
 
 public class MainWindow {
 

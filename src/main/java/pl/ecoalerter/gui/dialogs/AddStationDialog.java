@@ -1,4 +1,4 @@
-package main.java.pl.ecoalerter.gui.dialogs;
+package pl.ecoalerter.gui.dialogs;
 
 public class AddStationDialog {
 

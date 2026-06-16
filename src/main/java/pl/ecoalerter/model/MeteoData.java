@@ -1,4 +1,4 @@
-package main.java.pl.ecoalerter.model;
+package pl.ecoalerter.model;
 
 public class MeteoData {
 

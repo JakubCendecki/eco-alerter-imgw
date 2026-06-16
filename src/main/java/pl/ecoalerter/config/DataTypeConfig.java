@@ -1,4 +1,4 @@
-package main.java.pl.ecoalerter.config;
+package pl.ecoalerter.config;
 
 public class DataTypeConfig {
 

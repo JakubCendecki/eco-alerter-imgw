@@ -1,4 +1,4 @@
-package main.java.pl.ecoalerter.persistence;
+package pl.ecoalerter.persistence;
 
 public class DataRepository {
 

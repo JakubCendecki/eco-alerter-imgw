@@ -1,4 +1,4 @@
-package main.java.pl.ecoalerter.scheduler;
+package pl.ecoalerter.scheduler;
 
 public class ScheduleConfig {
 

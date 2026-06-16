@@ -1,4 +1,4 @@
-package test.java.pl.ecoalerter;
+package pl.ecoalerter.service;
 
 public class WarningServiceTest {
 

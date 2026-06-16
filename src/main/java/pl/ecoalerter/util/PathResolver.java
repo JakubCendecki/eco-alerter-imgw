@@ -1,4 +1,4 @@
-package main.java.pl.ecoalerter.util;
+package pl.ecoalerter.util;
 
 public class PathResolver {
 

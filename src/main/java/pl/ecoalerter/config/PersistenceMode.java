@@ -1,5 +1,5 @@
-package main.java.pl.ecoalerter.config;
+package pl.ecoalerter.config;
 
-public enum PersistenceMode {
+public class PersistenceMode {
 
 }
