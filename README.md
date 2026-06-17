@@ -270,12 +270,6 @@ Uruchomienie wszystkich testów:
 mvn test
 ```
 
-Generowanie raportów testowych:
-
-```bash
-mvn surefire-report:report
-```
-
 ---
 
 ## Licencja
