@@ -228,4 +228,6 @@ public final class DateTimeUtil {
     public static String todayForFilename() {
         return LocalDateTime.now().format(DATE_ONLY_FORMAT);
     }
+    
+    private DateTimeUtil() {}
 }

@@ -5,17 +5,22 @@ package ecoalerter.api;
  * Dokumentacja: https://danepubliczne.imgw.pl
 */
 public final class ApiEndpoints {
+
     public static final String BASE_URL = "https://danepubliczne.imgw.pl/api/data";
 
+    // -------------------------------------------------------------------------
+    // Dane meteorologiczne (METEO)
+    // -------------------------------------------------------------------------
+
     /** Wszystkie aktywne stacje meteo — zwraca tablicę JSON */
-    public static final String SYNOP_ALL = "/synop";
+    public static final String METEO_ALL = "/meteo";
 
     /** Dane konkretnej stacji meteo wg ID — zwraca obiekt JSON */
-    public static final String SYNOP_BY_ID = "/synop/id/";
+    public static final String METEO_BY_ID = "/meteo/id/";
 
-    /** Dane stacji meteo wg nazwy (częściowe dopasowanie) */
-    public static final String SYNOP_BY_NAME = "/synop/station/";
-
+    // -------------------------------------------------------------------------
+    // Dane hydrologiczne (HYDRO)
+    // -------------------------------------------------------------------------
 
     /** Wszystkie aktywne stacje hydro — zwraca tablicę JSON */
     public static final String HYDRO_ALL = "/hydro";
@@ -23,13 +28,16 @@ public final class ApiEndpoints {
     /** Dane konkretnej stacji hydro wg ID — zwraca obiekt JSON */
     public static final String HYDRO_BY_ID = "/hydro/id/";
 
-    /** Dane stacji hydro wg nazwy (częściowe dopasowanie) */
-    public static final String HYDRO_BY_NAME = "/hydro/station/";
+    // -------------------------------------------------------------------------
+    // Ostrzeżenia (WARNINGS)
+    // Gdy brak alertów, zwraca: {"status":false,"message":"No products were found"}
+    // -------------------------------------------------------------------------
 
+    /** Bieżące ostrzeżenia meteorologiczne */
+    public static final String WARNINGS_METEO = "/warningsmeteo";
 
-    public static final String WARNINGS_METEO = "/warnings/meteo";
-
-    public static final String WARNINGS_HYDRO = "/warnings/hydro";
+    /** Bieżące ostrzeżenia hydrologiczne */
+    public static final String WARNINGS_HYDRO = "/warningshydro";
 
     /**
      * Buduje pełny URL dla endpointu.
@@ -51,4 +59,6 @@ public final class ApiEndpoints {
     public static String fullUrl(String endpointPrefix, String param) {
         return BASE_URL + endpointPrefix + param;
     }
+
+    private ApiEndpoints() { }
 }

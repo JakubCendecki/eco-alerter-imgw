@@ -7,6 +7,7 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
+
 import ecoalerter.model.HydroData;
 import ecoalerter.model.MeteoData;
 

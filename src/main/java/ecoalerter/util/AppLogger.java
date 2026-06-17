@@ -208,4 +208,6 @@ public final class AppLogger {
         loggerConfig.setLevel(level);
         ctx.updateLoggers();
     }
+    
+    private AppLogger() { }
 }

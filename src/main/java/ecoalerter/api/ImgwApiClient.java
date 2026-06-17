@@ -1,7 +1,7 @@
 package ecoalerter.api;
 
-import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import ecoalerter.config.AppConfig;
 
 import java.io.IOException;
@@ -13,22 +13,23 @@ import java.time.Duration;
 
 /**
  * Niskopoziomowy klient HTTP do komunikacji z REST API IMGW-PIB.
+ *
  * Odpowiada wyłącznie za:
  *   Wysłanie żądania GET pod wskazany URL
  *   Obsługę błędów HTTP i sieciowych
  *   Logikę ponowień (retry) przy błędach przejściowych
+ *   
  * Parsowanie odpowiedzi JSON leży po stronie serwisów
  * ({@link MeteoApiService}, {@link HydroApiService}, {@link WarningApiService}).
 */
 public class ImgwApiClient {
-
     private static final Logger log = LogManager.getLogger(ImgwApiClient.class);
 
     /** Kody HTTP, po których warto ponowić żądanie (błędy przejściowe). */
     private static final int[] RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504};
 
-    /** Opóźnienie między kolejnymi próbami [ms]. */
-    private static final long RETRY_DELAY_MS = 1_500L;
+    /** Opóźnienie między kolejnymi próbami [ms]. Nadpisywalne w testach. */
+    private long retryDelayMs = 1_500L;
 
     private final HttpClient httpClient;
     private final AppConfig  config;
@@ -44,6 +45,19 @@ public class ImgwApiClient {
                 ApiEndpoints.BASE_URL,
                 config.getApiTimeoutSeconds(),
                 config.getApiRetryCount());
+    }
+
+    /**
+     * Konstruktor package-private do użycia w testach jednostkowych.
+     * Umożliwia wstrzyknięcie mockowanego HttpClient i zerowego opóźnienia retry.
+     *
+     * @param config     konfiguracja aplikacji (może być mock)
+     * @param httpClient mockowany klient HTTP
+    */
+    ImgwApiClient(AppConfig config, HttpClient httpClient) {
+        this.config       = config;
+        this.httpClient   = httpClient;
+        this.retryDelayMs = 0L; // bez czekania w testach
     }
 
     /**
@@ -75,8 +89,8 @@ public class ImgwApiClient {
                 }
 
                 log.warn("Próba {}/{} nieudana dla {} — czekam {}ms ({})",
-                        attempt, maxAttempts, url, RETRY_DELAY_MS, e.getMessage());
-                sleep(RETRY_DELAY_MS);
+                        attempt, maxAttempts, url, retryDelayMs, e.getMessage());
+                sleep(retryDelayMs);
             }
         }
 

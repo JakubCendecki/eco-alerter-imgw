@@ -45,7 +45,7 @@ public class MeteoApiService {
      * @throws ApiException gdy żądanie HTTP nie powiedzie się
     */
     public List<MeteoData> fetchAllStations() throws ApiException {
-        String url = ApiEndpoints.fullUrl(ApiEndpoints.SYNOP_ALL);
+        String url = ApiEndpoints.fullUrl(ApiEndpoints.METEO_ALL);
         log.info("Pobieranie danych meteo — wszystkie stacje: {}", url);
 
         String json = apiClient.get(url);
@@ -64,7 +64,7 @@ public class MeteoApiService {
             throw new IllegalArgumentException("stationId nie może być pusty");
         }
 
-        String url = ApiEndpoints.fullUrl(ApiEndpoints.SYNOP_BY_ID, stationId.trim());
+        String url = ApiEndpoints.fullUrl(ApiEndpoints.METEO_BY_ID, stationId.trim());
         log.info("Pobieranie danych meteo — stacja {}: {}", stationId, url);
 
         try {

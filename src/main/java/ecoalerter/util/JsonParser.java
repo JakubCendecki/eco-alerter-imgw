@@ -189,4 +189,7 @@ public final class JsonParser {
 
         return builder.create();
     }
+    
+    private JsonParser() { }
+
 }
