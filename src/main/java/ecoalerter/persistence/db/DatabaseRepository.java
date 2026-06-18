@@ -29,12 +29,16 @@ import java.util.Optional;
  *
  * Duplikaty są obsługiwane przez INSERT OR IGNORE (SQLite) / ON CONFLICT DO NOTHING,
  * więc ponowne zapisanie tego samego pomiaru jest bezpieczne.
-*/
+ */
 public class DatabaseRepository implements DataRepository {
 
     private static final Logger log = AppLogger.get(DatabaseRepository.class);
 
     private final ConnectionPool pool;
+
+    // -------------------------------------------------------------------------
+    // Konstruktor
+    // -------------------------------------------------------------------------
 
     public DatabaseRepository(ConnectionPool pool) {
         this.pool = pool;
@@ -440,7 +444,7 @@ public class DatabaseRepository implements DataRepository {
         String sql = """
                 SELECT id, station_id, level, type, phenomenon, probability, message, issued_at, valid_until
                 FROM warnings
-                WHERE valid_until IS NULL OR valid_until > strftime('%Y-%m-%d %H:%M:%S', 'now')
+                WHERE valid_until IS NULL OR valid_until > ?
                 ORDER BY
                     CASE level WHEN 'RED' THEN 1 WHEN 'ORANGE' THEN 2 ELSE 3 END,
                     issued_at DESC
@@ -449,6 +453,7 @@ public class DatabaseRepository implements DataRepository {
         try (Connection conn = pool.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
+            ps.setString(1, DateTimeUtil.toDbString(LocalDateTime.now()));
             return mapWarnings(ps.executeQuery());
 
         } catch (SQLException e) {
@@ -465,15 +470,19 @@ public class DatabaseRepository implements DataRepository {
 
     @Override
     public int deleteExpiredWarnings() throws PersistenceException {
+        // Zmienione zapytanie - zamiast strftime('now') używamy parametru '?'
         String sql = """
                 DELETE FROM warnings
                 WHERE valid_until IS NOT NULL
-                  AND valid_until <= strftime('%Y-%m-%d %H:%M:%S', 'now')
+                  AND valid_until <= ?
                 """;
 
         try (Connection conn = pool.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
+            // Przekazujemy czas z Javy, dzięki czemu unikamy konfliktu stref czasowych z SQLite
+            ps.setString(1, DateTimeUtil.toDbString(LocalDateTime.now()));
+            
             int deleted = ps.executeUpdate();
             if (deleted > 0) log.info("Usunięto {} wygasłych ostrzeżeń", deleted);
             return deleted;

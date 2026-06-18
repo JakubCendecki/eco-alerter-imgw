@@ -116,15 +116,26 @@ public class FileRepository implements DataRepository {
 
     @Override
     public void saveMeteo(MeteoData data) throws PersistenceException {
+        // Wymuszamy spójną nazwę stacji na podstawie konfiguracji słownikowej
+        String correctName = resolveStationName(data.getStationId(), StationType.METEO);
+        data.setStationName(correctName);
+
         if (useJson) jsonWriter.writeMeteo(data);
-        else         csvWriter.writeMeteo(data);
+        else          csvWriter.writeMeteo(data);
     }
 
     @Override
     public void saveAllMeteo(List<MeteoData> dataList) throws PersistenceException {
         if (dataList == null || dataList.isEmpty()) return;
+        
+        // Mapujemy poprawne nazwy dla całej listy
+        for (MeteoData data : dataList) {
+            String correctName = resolveStationName(data.getStationId(), StationType.METEO);
+            data.setStationName(correctName);
+        }
+
         if (useJson) jsonWriter.writeMeteoList(dataList);
-        else         csvWriter.writeMeteoList(dataList);
+        else          csvWriter.writeMeteoList(dataList);
         log.debug("Zapisano {} pomiarów meteo do plików", dataList.size());
     }
 
@@ -197,15 +208,26 @@ public class FileRepository implements DataRepository {
 
     @Override
     public void saveHydro(HydroData data) throws PersistenceException {
+        // Wymuszamy spójną nazwę stacji dla danych hydro
+        String correctName = resolveStationName(data.getStationId(), StationType.HYDRO);
+        data.setStationName(correctName);
+
         if (useJson) jsonWriter.writeHydro(data);
-        else         csvWriter.writeHydro(data);
+        else          csvWriter.writeHydro(data);
     }
 
     @Override
     public void saveAllHydro(List<HydroData> dataList) throws PersistenceException {
         if (dataList == null || dataList.isEmpty()) return;
+
+        // Mapujemy poprawne nazwy dla całej listy hydro
+        for (HydroData data : dataList) {
+            String correctName = resolveStationName(data.getStationId(), StationType.HYDRO);
+            data.setStationName(correctName);
+        }
+
         if (useJson) jsonWriter.writeHydroList(dataList);
-        else         csvWriter.writeHydroList(dataList);
+        else          csvWriter.writeHydroList(dataList);
         log.debug("Zapisano {} pomiarów hydro do plików", dataList.size());
     }
 

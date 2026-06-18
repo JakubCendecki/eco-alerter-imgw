@@ -2,25 +2,32 @@
 -- EcoAlerter IMGW — Schemat bazy danych
 -- Kompatybilny z: SQLite 3.x, PostgreSQL 14+, MySQL 8+
 -- Wykonywany automatycznie przez SchemaInitializer przy starcie aplikacji.
+-- Uwaga: brak deklaracji FOREIGN KEY — integralność referencyjna zapewniana
+-- przez warstwę serwisową, co upraszcza testy i eliminuje problemy z SQLite FK.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
 -- Stacje pomiarowe
+-- PRIMARY KEY (id, type) — ta sama stacja IMGW może być typem METEO i HYDRO
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS stations (
-    id               TEXT        NOT NULL,
-    name             TEXT        NOT NULL,
-    type             TEXT        NOT NULL CHECK (type IN ('METEO', 'HYDRO')),
-    active           INTEGER     NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
-    interval_seconds INTEGER     NOT NULL DEFAULT 0 CHECK (interval_seconds >= 0),
-    created_at       TEXT        NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now')),
-    updated_at       TEXT        NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now')),
+    id               TEXT    NOT NULL,
+    name             TEXT    NOT NULL,
+    type             TEXT    NOT NULL CHECK (type IN ('METEO', 'HYDRO')),
+    active           INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    interval_seconds INTEGER NOT NULL DEFAULT 0 CHECK (interval_seconds >= 0),
+    created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now')),
+    updated_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now')),
     PRIMARY KEY (id, type)
 );
 
+CREATE INDEX IF NOT EXISTS idx_stations_type_active
+    ON stations (type, active);
+
 -- -----------------------------------------------------------------------------
 -- Dane meteorologiczne
+-- UNIQUE (station_id, timestamp) zapobiega duplikatom przy ponownym pobraniu
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS meteo_data (
@@ -31,17 +38,12 @@ CREATE TABLE IF NOT EXISTS meteo_data (
     wind_speed    REAL,
     precipitation REAL,
     pressure      REAL,
-    created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now')),
-    FOREIGN KEY (station_id) REFERENCES stations (id)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE
+    created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now'))
 );
 
--- Unikalne pomiary — stacja + czas (zapobiega duplikatom przy ponownym pobraniu)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_meteo_station_timestamp
     ON meteo_data (station_id, timestamp);
 
--- Indeks do szybkiego filtrowania po stacji i czasie (używany przez GUI i cleanup)
 CREATE INDEX IF NOT EXISTS idx_meteo_station_id
     ON meteo_data (station_id);
 
@@ -61,10 +63,7 @@ CREATE TABLE IF NOT EXISTS hydro_data (
     flow                  REAL,
     ice_phenomenon        INTEGER NOT NULL DEFAULT 0,
     overgrowth_phenomenon INTEGER NOT NULL DEFAULT 0,
-    created_at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now')),
-    FOREIGN KEY (station_id) REFERENCES stations (id)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE
+    created_at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_hydro_station_timestamp
@@ -78,6 +77,7 @@ CREATE INDEX IF NOT EXISTS idx_hydro_timestamp
 
 -- -----------------------------------------------------------------------------
 -- Ostrzeżenia
+-- valid_until NULL oznacza bezterminowe (zawsze aktywne)
 -- -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS warnings (
@@ -93,11 +93,9 @@ CREATE TABLE IF NOT EXISTS warnings (
     created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now'))
 );
 
--- Indeks do filtrowania aktywnych ostrzeżeń (valid_until > now)
 CREATE INDEX IF NOT EXISTS idx_warnings_valid_until
     ON warnings (valid_until);
 
--- Indeks do filtrowania po typie i poziomie (najczęstsze zapytania z GUI)
 CREATE INDEX IF NOT EXISTS idx_warnings_level_type
     ON warnings (level, type);
 
