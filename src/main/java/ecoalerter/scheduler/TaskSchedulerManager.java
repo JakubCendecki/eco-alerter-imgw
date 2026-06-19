@@ -115,6 +115,30 @@ public class TaskSchedulerManager {
                 config.getRaw("scheduler.thread.pool.size"));
     }
 
+    /**
+     * Konstruktor package-private do użycia w testach jednostkowych.
+     * Przyjmuje gotowy executor zamiast budować własny, co pozwala
+     * mockować harmonogram bez uruchamiania prawdziwych wątków.
+     *
+     * @param executor wstrzykiwany executor (mock lub SynchronousExecutor)
+     */
+    TaskSchedulerManager(AppConfig config,
+                         ScheduleConfig scheduleConfig,
+                         MeteoApiService meteoService,
+                         HydroApiService hydroService,
+                         WarningApiService warningService,
+                         DataRepository repository,
+                         ScheduledExecutorService executor) {
+        this.config         = config;
+        this.scheduleConfig = scheduleConfig;
+        this.meteoService   = meteoService;
+        this.hydroService   = hydroService;
+        this.warningService = warningService;
+        this.repository     = repository;
+        this.dataTypeConfig = config.getDataTypeConfig();
+        this.executor       = executor;
+    }
+
     // -------------------------------------------------------------------------
     // Zarządzanie stacjami
     // -------------------------------------------------------------------------
