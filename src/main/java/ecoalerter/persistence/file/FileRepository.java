@@ -40,7 +40,6 @@ import java.util.Optional;
 public class FileRepository implements DataRepository {
     private static final Logger log = AppLogger.get(FileRepository.class);
 
-    private static final String STATIONS_FILE = "stations.json";
     private static final String FORMAT_JSON   = "JSON";
 
     private final PathResolver   pathResolver;

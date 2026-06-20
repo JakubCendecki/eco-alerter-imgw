@@ -28,7 +28,7 @@ public class StationService {
 
     private final DataRepository       repository;
     private final TaskSchedulerManager scheduler;
-    private final AppConfig            config;
+    
 
     // -------------------------------------------------------------------------
     // Konstruktor
@@ -39,7 +39,6 @@ public class StationService {
                           AppConfig config) {
         this.repository = repository;
         this.scheduler  = scheduler;
-        this.config     = config;
     }
 
     // -------------------------------------------------------------------------
