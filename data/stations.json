@@ -1,9 +1,0 @@
-[
-  {
-    "id": "252210290",
-    "name": "RB",
-    "type": "METEO",
-    "active": true,
-    "intervalSeconds": 300
-  }
-]
