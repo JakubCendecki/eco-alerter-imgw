@@ -1,5 +1,6 @@
 package ecoalerter.gui.panels;
 
+import ecoalerter.api.ApiException;
 import ecoalerter.gui.components.StationTable;
 import ecoalerter.gui.dialogs.AddStationDialog;
 import ecoalerter.model.Station;
@@ -31,8 +32,9 @@ import java.util.List;
  * aktualizuje kolumnę statusu w tabeli po zdarzeniach DATA_UPDATED/STATION_ERROR.
  */
 public class StationManagerPanel extends JPanel implements NotificationService.AppEventListener {
+	private static final long serialVersionUID = -129460458602615192L;
 
-    private static final Logger log = AppLogger.get(StationManagerPanel.class);
+	private static final Logger log = AppLogger.get(StationManagerPanel.class);
 
     private final StationService          stationService;
     private final DataCollectionService    dataCollectionService;
@@ -128,25 +130,82 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
     // -------------------------------------------------------------------------
 
     private void onAddStation() {
-        AddStationDialog.showAddDialog(this).ifPresent(station ->
-                new SwingWorker<Void, Void>() {
-                    @Override
-                    protected Void doInBackground() throws Exception {
-                        stationService.addStation(station);
-                        return null;
+        AddStationDialog.showAddDialog(this).ifPresent(this::verifyAndAddStation);
+    }
+
+    /**
+     * Weryfikuje w API IMGW, czy podana stacja faktycznie istnieje, zanim
+     * zostanie zapisana w repozytorium. Zapobiega dodaniu literówki w ID,
+     * która nigdy nie zwróciłaby żadnych danych pomiarowych.
+     *
+     * Zwykłe 404 (brak stacji) skutkuje komunikatem ostrzegawczym i przerwaniem
+     * operacji. Błąd sieciowy/serwera skutkuje innym komunikatem, ale też
+     * nie dodaje stacji — użytkownik może spróbować ponownie później.
+     */
+    private void verifyAndAddStation(Station station) {
+        new SwingWorker<Boolean, Void>() {
+            private String errorMessage;
+
+            @Override
+            protected Boolean doInBackground() {
+                try {
+                    return dataCollectionService.stationExists(station.getId(), station.getType());
+                } catch (ApiException e) {
+                    errorMessage = e.getMessage();
+                    log.warn("Błąd weryfikacji stacji {} w API: {}", station.getId(), e.getMessage());
+                    return null;
+                }
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    Boolean exists = get();
+
+                    if (exists == null) {
+                        JOptionPane.showMessageDialog(StationManagerPanel.this,
+                                "Nie udało się zweryfikować stacji w API IMGW:\n" + errorMessage +
+                                "\n\nSprawdź połączenie z internetem i spróbuj ponownie.",
+                                "Błąd weryfikacji", JOptionPane.ERROR_MESSAGE);
+                        return;
                     }
 
-                    @Override
-                    protected void done() {
-                        try {
-                            get();
-                            reloadStations();
-                            notificationService.notifyStationsChanged();
-                        } catch (Exception e) {
-                            showError("Nie udało się dodać stacji " + station.getId(), e);
-                        }
+                    if (!exists) {
+                        JOptionPane.showMessageDialog(StationManagerPanel.this,
+                                "Stacja o ID '" + station.getId() + "' [" + station.getType() +
+                                "] nie istnieje w API IMGW.\nSprawdź poprawność identyfikatora i spróbuj ponownie.",
+                                "Nieprawidłowe ID stacji", JOptionPane.WARNING_MESSAGE);
+                        return;
                     }
-                }.execute());
+
+                    saveNewStation(station);
+
+                } catch (Exception e) {
+                    showError("Nieoczekiwany błąd weryfikacji stacji " + station.getId(), e);
+                }
+            }
+        }.execute();
+    }
+
+    private void saveNewStation(Station station) {
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                stationService.addStation(station);
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    get();
+                    reloadStations();
+                    notificationService.notifyStationsChanged();
+                } catch (Exception e) {
+                    showError("Nie udało się dodać stacji " + station.getId(), e);
+                }
+            }
+        }.execute();
     }
 
     private void onRemoveStation() {

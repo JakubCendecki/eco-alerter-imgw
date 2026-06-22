@@ -55,7 +55,36 @@ public class DataCollectionService {
         this.repository     = repository;
         this.dataTypeConfig = dataTypeConfig;
     }
+    
+    // -------------------------------------------------------------------------
+    // Walidacja istnienia stacji w API (dla GUI — przed dodaniem nowej stacji)
+    // -------------------------------------------------------------------------
 
+    /**
+     * Sprawdza czy stacja o podanym ID rzeczywiście istnieje w API IMGW,
+     * bez zapisywania jakichkolwiek danych do repozytorium. Używane przez
+     * StationManagerPanel przed dodaniem nowej stacji — zapobiega dodaniu
+     * nieistniejącego ID, które nigdy nie zwróci żadnych danych.
+     *
+     * Zwykłe 404 (stacja nie znaleziona) jest tu zwracane jako false,
+     * nie jako wyjątek — ApiException jest rzucany tylko dla rzeczywistych
+     * błędów komunikacji (timeout, brak sieci, błąd serwera).
+     *
+     * @param stationId identyfikator stacji do zweryfikowania
+     * @param type      typ stacji (METEO lub HYDRO) — decyduje który serwis API odpytać
+     * @return true jeśli stacja istnieje i API zwróciło dla niej dane
+     * @throws ApiException gdy żądanie HTTP nie powiedzie się z innego powodu niż 404
+     */
+    public boolean stationExists(String stationId, StationType type) throws ApiException {
+        boolean exists = (type == StationType.METEO)
+                ? meteoService.fetchById(stationId).isPresent()
+                : hydroService.fetchById(stationId).isPresent();
+
+        log.debug("Weryfikacja istnienia stacji {} [{}]: {}", stationId, type, exists);
+        return exists;
+    }
+    
+    
     // -------------------------------------------------------------------------
     // Manualne pobieranie — dla GUI ("Odśwież teraz")
     // -------------------------------------------------------------------------
@@ -268,7 +297,6 @@ public class DataCollectionService {
         if (!dataTypeConfig.isTemperatureEnabled())  data.setTemperature(null);
         if (!dataTypeConfig.isWindEnabled())         data.setWindSpeed(null);
         if (!dataTypeConfig.isPrecipitationEnabled()) data.setPrecipitation(null);
-        if (!dataTypeConfig.isPressureEnabled())     data.setPressure(null);
         return data;
     }
 

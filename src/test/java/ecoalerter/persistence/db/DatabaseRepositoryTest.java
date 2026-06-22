@@ -125,7 +125,7 @@ class DatabaseRepositoryTest {
 
     @Test
     void saveMeteo_andFindByStation_returnsRecord() throws PersistenceException {
-        repo.saveMeteo(meteoData("12200", NOW, 22.4, 3.1, 0.0, 1013.2));
+        repo.saveMeteo(meteoData("12200", NOW, 22.4, 3.1, 0.0));
 
         List<MeteoData> result = repo.findMeteoByStation("12200");
 
@@ -135,12 +135,11 @@ class DatabaseRepositoryTest {
         assertEquals(22.4, d.getTemperature(), 0.001);
         assertEquals(3.1,  d.getWindSpeed(),   0.001);
         assertEquals(0.0,  d.getPrecipitation(), 0.001);
-        assertEquals(1013.2, d.getPressure(),  0.001);
     }
 
     @Test
     void saveMeteo_duplicate_isIgnored() throws PersistenceException {
-        MeteoData data = meteoData("12200", NOW, 22.4, 3.1, 0.0, 1013.2);
+        MeteoData data = meteoData("12200", NOW, 22.4, 3.1, 0.0);
         repo.saveMeteo(data);
         repo.saveMeteo(data); // drugi zapis tego samego pomiaru
 
@@ -150,8 +149,8 @@ class DatabaseRepositoryTest {
     @Test
     void saveAllMeteo_savesMultipleRecords() throws PersistenceException {
         List<MeteoData> batch = List.of(
-                meteoData("12200", NOW,        22.4, 3.1, 0.0, 1013.2),
-                meteoData("12200", HOUR_LATER, 23.1, 2.8, 0.0, 1012.8)
+                meteoData("12200", NOW,        22.4, 3.1, 0.0),
+                meteoData("12200", HOUR_LATER, 23.1, 2.8, 0.0)
         );
         repo.saveAllMeteo(batch);
 
@@ -160,8 +159,8 @@ class DatabaseRepositoryTest {
 
     @Test
     void findMeteoByStation_sortsDescendingByTimestamp() throws PersistenceException {
-        repo.saveMeteo(meteoData("12200", NOW,        20.0, 0.0, 0.0, 1010.0));
-        repo.saveMeteo(meteoData("12200", HOUR_LATER, 21.0, 0.0, 0.0, 1010.0));
+        repo.saveMeteo(meteoData("12200", NOW,        20.0, 0.0, 0.0));
+        repo.saveMeteo(meteoData("12200", HOUR_LATER, 21.0, 0.0, 0.0));
 
         List<MeteoData> result = repo.findMeteoByStation("12200");
 
@@ -171,9 +170,9 @@ class DatabaseRepositoryTest {
 
     @Test
     void findMeteoByStationAndRange_returnsOnlyRecordsInRange() throws PersistenceException {
-        repo.saveMeteo(meteoData("12200", DAY_AGO,    15.0, 0.0, 0.0, 1005.0));
-        repo.saveMeteo(meteoData("12200", NOW,        22.0, 0.0, 0.0, 1013.0));
-        repo.saveMeteo(meteoData("12200", HOUR_LATER, 22.5, 0.0, 0.0, 1013.5));
+        repo.saveMeteo(meteoData("12200", DAY_AGO,    15.0, 0.0, 0.0));
+        repo.saveMeteo(meteoData("12200", NOW,        22.0, 0.0, 0.0));
+        repo.saveMeteo(meteoData("12200", HOUR_LATER, 22.5, 0.0, 0.0));
 
         List<MeteoData> result = repo.findMeteoByStationAndRange("12200", NOW, HOUR_LATER);
 
@@ -183,9 +182,9 @@ class DatabaseRepositoryTest {
 
     @Test
     void findLatestMeteo_returnsNewestRecord() throws PersistenceException {
-        repo.saveMeteo(meteoData("12200", DAY_AGO,    15.0, 0.0, 0.0, 1005.0));
-        repo.saveMeteo(meteoData("12200", NOW,        22.0, 0.0, 0.0, 1013.0));
-        repo.saveMeteo(meteoData("12200", HOUR_LATER, 22.5, 0.0, 0.0, 1013.5));
+        repo.saveMeteo(meteoData("12200", DAY_AGO,    15.0, 0.0, 0.0));
+        repo.saveMeteo(meteoData("12200", NOW,        22.0, 0.0, 0.0));
+        repo.saveMeteo(meteoData("12200", HOUR_LATER, 22.5, 0.0, 0.0));
 
         Optional<MeteoData> latest = repo.findLatestMeteo("12200");
 
@@ -200,8 +199,8 @@ class DatabaseRepositoryTest {
 
     @Test
     void deleteMeteoOlderThan_removesOldRecords() throws PersistenceException {
-        repo.saveMeteo(meteoData("12200", DAY_AGO, 15.0, 0.0, 0.0, 1005.0));
-        repo.saveMeteo(meteoData("12200", NOW,     22.0, 0.0, 0.0, 1013.0));
+        repo.saveMeteo(meteoData("12200", DAY_AGO, 15.0, 0.0, 0.0));
+        repo.saveMeteo(meteoData("12200", NOW,     22.0, 0.0, 0.0));
 
         int deleted = repo.deleteMeteoOlderThan(NOW);
 
@@ -213,14 +212,13 @@ class DatabaseRepositoryTest {
 
     @Test
     void saveMeteo_withNullFields_savesNullsCorrectly() throws PersistenceException {
-        MeteoData data = new MeteoData("12200", "WARSZAWA", NOW, null, null, null, null);
+        MeteoData data = new MeteoData("12200", "WARSZAWA", NOW, null, null, null);
         repo.saveMeteo(data);
 
         MeteoData loaded = repo.findLatestMeteo("12200").orElseThrow();
         assertNull(loaded.getTemperature());
         assertNull(loaded.getWindSpeed());
         assertNull(loaded.getPrecipitation());
-        assertNull(loaded.getPressure());
     }
 
     // =========================================================================
@@ -402,8 +400,8 @@ class DatabaseRepositoryTest {
     }
 
     private MeteoData meteoData(String stationId, LocalDateTime ts,
-                                double temp, double wind, double precip, double pressure) {
-        return new MeteoData(stationId, "TEST", ts, temp, wind, precip, pressure);
+                                double temp, double wind, double precip) {
+        return new MeteoData(stationId, "TEST", ts, temp, wind, precip);
     }
 
     private HydroData hydroData(String stationId, LocalDateTime ts,

@@ -2,31 +2,55 @@
 <Configuration status="WARN" monitorInterval="60">
 
     <Properties>
+        <!-- Katalog logów — nadpisywalny właściwością systemową -Decoalerter.log.dir=... -->
         <Property name="LOG_DIR">${sys:ecoalerter.log.dir:-./logs}</Property>
         <Property name="APP_NAME">eco-alerter-imgw</Property>
+
+        <!-- Format linii logu w pliku -->
         <Property name="FILE_PATTERN">
             %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n%throwable
         </Property>
+
+        <!-- Format linii logu w konsoli (z kolorami ANSI) -->
         <Property name="CONSOLE_PATTERN">
             %d{HH:mm:ss.SSS} %highlight{%-5level}{FATAL=red blink, ERROR=red, WARN=yellow, INFO=green, DEBUG=cyan, TRACE=white} %style{%logger{30}}{bright,blue} - %msg%n%throwable
         </Property>
     </Properties>
+
+    <!-- ================================================================== -->
+    <!-- APPENDERY                                                           -->
+    <!-- ================================================================== -->
     <Appenders>
+
+        <!-- Konsola — wszystkie poziomy INFO i wyżej -->
         <Console name="ConsoleAppender" target="SYSTEM_OUT">
             <PatternLayout pattern="${CONSOLE_PATTERN}" disableAnsi="false"/>
             <ThresholdFilter level="INFO" onMatch="ACCEPT" onMismatch="DENY"/>
         </Console>
+
+        <!-- Plik główny — rolling po dacie i rozmiarze, łączny limit 20 MB -->
         <RollingFile name="FileAppender"
                      fileName="${LOG_DIR}/${APP_NAME}.log"
                      filePattern="${LOG_DIR}/${APP_NAME}-%d{yyyy-MM-dd}-%i.log.gz">
             <PatternLayout pattern="${FILE_PATTERN}"/>
             <Policies>
+                <!-- Nowy plik o północy -->
                 <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <!-- Nowy plik po przekroczeniu 10 MB -->
                 <SizeBasedTriggeringPolicy size="10MB"/>
             </Policies>
-            <DefaultRolloverStrategy max="30" compressionLevel="6"/>
+            <!-- Po każdej rotacji: jeśli zarchiwizowane pliki przekraczają 20 MB
+                 łącznie, usuń najstarsze, aż zmieści się w limicie -->
+            <DefaultRolloverStrategy compressionLevel="6">
+                <Delete basePath="${LOG_DIR}" maxDepth="1">
+                    <IfFileName glob="${APP_NAME}-20*.log.gz"/>
+                    <IfAccumulatedFileSize exceeds="20 MB"/>
+                </Delete>
+            </DefaultRolloverStrategy>
             <ThresholdFilter level="DEBUG" onMatch="ACCEPT" onMismatch="DENY"/>
         </RollingFile>
+
+        <!-- Osobny plik tylko dla błędów (ERROR i FATAL), łączny limit 10 MB -->
         <RollingFile name="ErrorFileAppender"
                      fileName="${LOG_DIR}/${APP_NAME}-errors.log"
                      filePattern="${LOG_DIR}/${APP_NAME}-errors-%d{yyyy-MM-dd}-%i.log.gz">
@@ -35,9 +59,16 @@
                 <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
                 <SizeBasedTriggeringPolicy size="5MB"/>
             </Policies>
-            <DefaultRolloverStrategy max="90"/>
+            <DefaultRolloverStrategy>
+                <Delete basePath="${LOG_DIR}" maxDepth="1">
+                    <IfFileName glob="${APP_NAME}-errors-*.log.gz"/>
+                    <IfAccumulatedFileSize exceeds="10 MB"/>
+                </Delete>
+            </DefaultRolloverStrategy>
             <ThresholdFilter level="ERROR" onMatch="ACCEPT" onMismatch="DENY"/>
         </RollingFile>
+
+        <!-- Osobny plik tylko dla zdarzeń API (logi żądań HTTP do IMGW), łączny limit 10 MB -->
         <RollingFile name="ApiFileAppender"
                      fileName="${LOG_DIR}/${APP_NAME}-api.log"
                      filePattern="${LOG_DIR}/${APP_NAME}-api-%d{yyyy-MM-dd}-%i.log.gz">
@@ -46,31 +77,50 @@
                 <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
                 <SizeBasedTriggeringPolicy size="10MB"/>
             </Policies>
-            <DefaultRolloverStrategy max="14"/>
+            <DefaultRolloverStrategy>
+                <Delete basePath="${LOG_DIR}" maxDepth="1">
+                    <IfFileName glob="${APP_NAME}-api-*.log.gz"/>
+                    <IfAccumulatedFileSize exceeds="10 MB"/>
+                </Delete>
+            </DefaultRolloverStrategy>
             <ThresholdFilter level="DEBUG" onMatch="ACCEPT" onMismatch="DENY"/>
         </RollingFile>
 
     </Appenders>
+
+    <!-- ================================================================== -->
+    <!-- KONFIGURACJA LOGGERÓW                                              -->
+    <!-- ================================================================== -->
     <Loggers>
+
+        <!-- Logger dla całej warstwy API — DEBUG do pliku api.log -->
         <Logger name="ecoalerter.api" level="DEBUG" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="ApiFileAppender"/>
             <AppenderRef ref="ErrorFileAppender"/>
         </Logger>
+
+        <!-- Logger schedulera — INFO, bo jest bardzo aktywny -->
         <Logger name="ecoalerter.scheduler" level="INFO" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="FileAppender"/>
             <AppenderRef ref="ErrorFileAppender"/>
         </Logger>
+
+        <!-- Logger persystencji — DEBUG do głównego pliku -->
         <Logger name="ecoalerter.persistence" level="DEBUG" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="FileAppender"/>
             <AppenderRef ref="ErrorFileAppender"/>
         </Logger>
+
+        <!-- Logger GUI — tylko WARN i wyżej w konsoli, ERROR do pliku -->
         <Logger name="ecoalerter.gui" level="WARN" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="ErrorFileAppender"/>
         </Logger>
+
+        <!-- Wyciszenie nadmiernie gadatliwych bibliotek zewnętrznych -->
         <Logger name="com.zaxxer.hikari" level="WARN" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="FileAppender"/>
@@ -78,6 +128,8 @@
         <Logger name="com.google.gson" level="WARN" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
         </Logger>
+
+        <!-- Root logger — domyślny poziom INFO dla wszystkiego pozostałego -->
         <Root level="INFO">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="FileAppender"/>

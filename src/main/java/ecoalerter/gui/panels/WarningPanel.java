@@ -1,5 +1,6 @@
 package ecoalerter.gui.panels;
 
+import ecoalerter.gui.components.TableSortUtil;
 import ecoalerter.model.Warning;
 import ecoalerter.model.WarningLevel;
 import ecoalerter.service.NotificationService;
@@ -20,6 +21,7 @@ import javax.swing.JToolBar;
 import javax.swing.SwingWorker;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.TableRowSorter;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -38,8 +40,9 @@ import java.util.List;
  * przycisku odśwież.
  */
 public class WarningPanel extends JPanel implements NotificationService.AppEventListener {
+	private static final long serialVersionUID = -269700932992530268L;
 
-    private static final Logger log = AppLogger.get(WarningPanel.class);
+	private static final Logger log = AppLogger.get(WarningPanel.class);
 
     private static final String[] COLUMNS = {
             "Poziom", "Typ", "Zjawisko", "Prob. (%)", "Wydano", "Ważne do"
@@ -89,6 +92,16 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
 
         table.setRowHeight(24);
         table.setDefaultRenderer(Object.class, new WarningRowRenderer());
+
+        // Sortowanie po kliknięciu nagłówka. Prob. (%) to liczba, Wydano/Ważne do
+        // to daty — bez komparatorów sortowałyby się alfabetycznie po znakach
+        // (np. "01.01.2027" przed "22.06.2026", co jest błędne chronologicznie).
+        TableRowSorter<WarningTableModel> sorter = new TableRowSorter<>(tableModel);
+        sorter.setComparator(0, TableSortUtil.warningSeverity()); // Poziom
+        sorter.setComparator(3, TableSortUtil.numeric());          // Prob. (%)
+        sorter.setComparator(4, TableSortUtil.date());             // Wydano
+        sorter.setComparator(5, TableSortUtil.date());             // Ważne do
+        table.setRowSorter(sorter);
 
         filterCombo.addActionListener(e -> applyFilterAndDisplay());
         refreshButton.addActionListener(e -> onRefreshFromApi());
@@ -201,8 +214,9 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
     // =========================================================================
 
     private static class WarningTableModel extends AbstractTableModel {
-
-        private List<Warning> allWarnings      = new ArrayList<>();
+		private static final long serialVersionUID = -1433756110399268889L;
+		
+		private List<Warning> allWarnings      = new ArrayList<>();
         private List<Warning> filteredWarnings = new ArrayList<>();
 
         void setAllWarnings(List<Warning> warnings) {
@@ -258,8 +272,9 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
     // =========================================================================
 
     private class WarningRowRenderer extends DefaultTableCellRenderer {
+		private static final long serialVersionUID = 6773993286828545130L;
 
-        @Override
+		@Override
         public Component getTableCellRendererComponent(JTable tbl, Object value,
                                                         boolean isSelected, boolean hasFocus,
                                                         int row, int column) {

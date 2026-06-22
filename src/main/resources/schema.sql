@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS meteo_data (
     temperature   REAL,
     wind_speed    REAL,
     precipitation REAL,
-    pressure      REAL,
     created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now'))
 );
 

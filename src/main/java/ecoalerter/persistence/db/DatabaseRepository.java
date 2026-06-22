@@ -128,8 +128,8 @@ public class DatabaseRepository implements DataRepository {
     public void saveMeteo(MeteoData data) throws PersistenceException {
         String sql = """
                 INSERT OR IGNORE INTO meteo_data
-                    (station_id, timestamp, temperature, wind_speed, precipitation, pressure)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (station_id, timestamp, temperature, wind_speed, precipitation)
+                VALUES (?, ?, ?, ?, ?)
                 """;
 
         try (Connection conn = pool.getConnection();
@@ -150,8 +150,8 @@ public class DatabaseRepository implements DataRepository {
 
         String sql = """
                 INSERT OR IGNORE INTO meteo_data
-                    (station_id, timestamp, temperature, wind_speed, precipitation, pressure)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (station_id, timestamp, temperature, wind_speed, precipitation)
+                VALUES (?, ?, ?, ?, ?)
                 """;
 
         try (Connection conn = pool.getConnection();
@@ -179,7 +179,7 @@ public class DatabaseRepository implements DataRepository {
     @Override
     public List<MeteoData> findMeteoByStation(String stationId) throws PersistenceException {
         String sql = """
-                SELECT station_id, timestamp, temperature, wind_speed, precipitation, pressure
+                SELECT station_id, timestamp, temperature, wind_speed, precipitation
                 FROM meteo_data
                 WHERE station_id = ?
                 ORDER BY timestamp DESC
@@ -201,7 +201,7 @@ public class DatabaseRepository implements DataRepository {
                                                       LocalDateTime from,
                                                       LocalDateTime to) throws PersistenceException {
         String sql = """
-                SELECT station_id, timestamp, temperature, wind_speed, precipitation, pressure
+                SELECT station_id, timestamp, temperature, wind_speed, precipitation
                 FROM meteo_data
                 WHERE station_id = ? AND timestamp >= ? AND timestamp <= ?
                 ORDER BY timestamp ASC
@@ -223,7 +223,7 @@ public class DatabaseRepository implements DataRepository {
     @Override
     public Optional<MeteoData> findLatestMeteo(String stationId) throws PersistenceException {
         String sql = """
-                SELECT station_id, timestamp, temperature, wind_speed, precipitation, pressure
+                SELECT station_id, timestamp, temperature, wind_speed, precipitation
                 FROM meteo_data
                 WHERE station_id = ?
                 ORDER BY timestamp DESC
@@ -470,19 +470,15 @@ public class DatabaseRepository implements DataRepository {
 
     @Override
     public int deleteExpiredWarnings() throws PersistenceException {
-        // Zmienione zapytanie - zamiast strftime('now') używamy parametru '?'
         String sql = """
                 DELETE FROM warnings
                 WHERE valid_until IS NOT NULL
-                  AND valid_until <= ?
+                  AND valid_until <= strftime('%Y-%m-%d %H:%M:%S', 'now')
                 """;
 
         try (Connection conn = pool.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
-            // Przekazujemy czas z Javy, dzięki czemu unikamy konfliktu stref czasowych z SQLite
-            ps.setString(1, DateTimeUtil.toDbString(LocalDateTime.now()));
-            
             int deleted = ps.executeUpdate();
             if (deleted > 0) log.info("Usunięto {} wygasłych ostrzeżeń", deleted);
             return deleted;
@@ -512,7 +508,6 @@ public class DatabaseRepository implements DataRepository {
         setNullableDouble(ps, 3, d.getTemperature());
         setNullableDouble(ps, 4, d.getWindSpeed());
         setNullableDouble(ps, 5, d.getPrecipitation());
-        setNullableDouble(ps, 6, d.getPressure());
     }
 
     private void bindHydro(PreparedStatement ps, HydroData d) throws SQLException {
@@ -581,7 +576,6 @@ public class DatabaseRepository implements DataRepository {
             d.setTemperature(getNullableDouble(rs, "temperature"));
             d.setWindSpeed(getNullableDouble(rs, "wind_speed"));
             d.setPrecipitation(getNullableDouble(rs, "precipitation"));
-            d.setPressure(getNullableDouble(rs, "pressure"));
             list.add(d);
         }
         return list;

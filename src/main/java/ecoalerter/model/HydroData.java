@@ -6,20 +6,22 @@ import java.util.Objects;
 /**
  * Model pojedynczego pomiaru hydrologicznego ze stacji IMGW-PIB.
  *
- *Pola odpowiadają odpowiedzi endpointu {@code /api/data/hydro}:
- *   {@code id_stacji}           → {@link #stationId}
- *   {@code stacja}              → {@link #stationName}
- *   {@code rzeka}               → {@link #riverName}
- *   {@code województwo}         → {@link #voivodeship}
- *   {@code stan_wody}           → {@link #waterLevel}
- *   {@code temperatura_wody}    → {@link #waterTemperature}
- *   {@code zjawisko_lodowe}     → {@link #icePhenomenon}
- *   {@code zjawisko_zarastania} → {@link #overgrowthPhenomenon}
- *   {@code przelyw}             → {@link #flow}
+ * <p>Pola odpowiadają odpowiedzi endpointu {@code /api/data/hydro}:
+ * <ul>
+ *   <li>{@code id_stacji}           → {@link #stationId}</li>
+ *   <li>{@code stacja}              → {@link #stationName}</li>
+ *   <li>{@code rzeka}               → {@link #riverName}</li>
+ *   <li>{@code województwo}         → {@link #voivodeship}</li>
+ *   <li>{@code stan_wody}           → {@link #waterLevel}</li>
+ *   <li>{@code temperatura_wody}    → {@link #waterTemperature}</li>
+ *   <li>{@code zjawisko_lodowe}     → {@link #icePhenomenon}</li>
+ *   <li>{@code zjawisko_zarastania} → {@link #overgrowthPhenomenon}</li>
+ *   <li>{@code przeplyw}            → {@link #flow}</li>
+ * </ul>
  *
- * Pola liczbowe są typu {@link Double} / {@code int}, co pozwala
+ * <p>Pola liczbowe są typu {@link Double} / {@code int}, co pozwala
  * na reprezentację braku pomiaru jako {@code null}.
-*/
+ */
 public class HydroData {
 
     /** Identyfikator stacji (klucz obcy do {@link Station#getId()}). */
@@ -40,33 +42,37 @@ public class HydroData {
     /**
      * Stan wody [cm] — poziom wody nad zerem wodowskazowym.
      * {@code null} gdy brak pomiaru.
-    */
+     */
     private Double waterLevel;
 
     /**
      * Temperatura wody [°C].
      * {@code null} gdy stacja nie dostarczyła tej wartości.
-    */
+     */
     private Double waterTemperature;
 
     /**
      * Zjawisko lodowe (kod IMGW).
      * {@code 0} — brak zjawisk lodowych.
      * Wartości > 0 oznaczają różne stadia zlodzenia.
-    */
+     */
     private int icePhenomenon;
 
     /**
      * Zjawisko zarastania (kod IMGW).
      * {@code 0} — brak zjawisk zarastania.
-    */
+     */
     private int overgrowthPhenomenon;
 
     /**
      * Przepływ wody [m³/s].
      * {@code null} gdy stacja nie mierzy przepływu.
-    */
+     */
     private Double flow;
+
+    // -------------------------------------------------------------------------
+    // Konstruktory
+    // -------------------------------------------------------------------------
 
     /** Konstruktor bezargumentowy wymagany przez Gson / JDBC. */
     public HydroData() {}
@@ -80,7 +86,7 @@ public class HydroData {
      * @param timestamp    data i czas pomiaru
      * @param waterLevel   stan wody [cm], może być {@code null}
      * @param waterTemperature temperatura wody [°C], może być {@code null}
-    */
+     */
     public HydroData(String stationId, String stationName, String riverName,
                      LocalDateTime timestamp, Double waterLevel, Double waterTemperature) {
         this.stationId        = stationId;
@@ -93,11 +99,15 @@ public class HydroData {
         this.overgrowthPhenomenon = 0;
     }
 
+    // -------------------------------------------------------------------------
+    // Metody pomocnicze
+    // -------------------------------------------------------------------------
+
     /**
      * Sprawdza czy aktualnie występuje zjawisko lodowe.
      *
      * @return {@code true} jeśli kod zjawiska lodowego jest większy od zera
-    */
+     */
     public boolean hasIcePhenomenon() {
         return icePhenomenon > 0;
     }
@@ -106,7 +116,7 @@ public class HydroData {
      * Sprawdza czy aktualnie występuje zjawisko zarastania.
      *
      * @return {@code true} jeśli kod zjawiska zarastania jest większy od zera
-    */
+     */
     public boolean hasOvergrowthPhenomenon() {
         return overgrowthPhenomenon > 0;
     }
@@ -115,7 +125,7 @@ public class HydroData {
      * Sprawdza czy obiekt zawiera co najmniej jedną wartość pomiarową (nie null).
      *
      * @return {@code true} jeśli przynajmniej stan wody lub temperatura są ustawione
-    */
+     */
     public boolean hasAnyMeasurement() {
         return waterLevel != null || waterTemperature != null || flow != null;
     }
@@ -124,7 +134,7 @@ public class HydroData {
      * Zwraca opis pomiaru do wyświetlania w tabeli GUI.
      *
      * @return np. {@code "Wisła/Warszawa | 145 cm | 14.2°C"}
-    */
+     */
     public String toDisplayString() {
         StringBuilder sb = new StringBuilder();
         if (riverName != null && !riverName.isBlank()) {
@@ -137,7 +147,13 @@ public class HydroData {
         return sb.toString();
     }
 
-    /** Dwa pomiary są równe gdy dotyczą tej samej stacji i tego samego czasu. */
+    // -------------------------------------------------------------------------
+    // equals, hashCode, toString
+    // -------------------------------------------------------------------------
+
+    /**
+     * Dwa pomiary są równe gdy dotyczą tej samej stacji i tego samego czasu.
+     */
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -157,6 +173,10 @@ public class HydroData {
                 "HydroData{stationId='%s', river='%s', time=%s, level=%s cm, temp=%s°C, flow=%s m³/s}",
                 stationId, riverName, timestamp, waterLevel, waterTemperature, flow);
     }
+
+    // -------------------------------------------------------------------------
+    // Gettery i settery
+    // -------------------------------------------------------------------------
 
     /** @return identyfikator stacji IMGW */
     public String getStationId()                         { return stationId; }

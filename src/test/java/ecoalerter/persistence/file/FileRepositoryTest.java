@@ -279,7 +279,7 @@ class FileRepositoryTest {
     }
 
     private MeteoData meteoData(String id, LocalDateTime ts, double temp, double wind) {
-        return new MeteoData(id, "TEST", ts, temp, wind, 0.0, 1013.0);
+        return new MeteoData(id, "TEST", ts, temp, wind, 0.0);
     }
 
     private HydroData hydroData(String id, LocalDateTime ts, double level, double temp) {

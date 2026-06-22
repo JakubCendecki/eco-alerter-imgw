@@ -208,7 +208,6 @@ class FetchTaskTest {
         cfg.setTemperatureEnabled(false);
         cfg.setWindEnabled(false);
         cfg.setPrecipitationEnabled(false);
-        cfg.setPressureEnabled(false);
 
         when(meteoService.fetchById("12200")).thenReturn(Optional.of(fullMeteoData()));
 
@@ -396,7 +395,7 @@ class FetchTaskTest {
     }
 
     private MeteoData fullMeteoData() {
-        return new MeteoData("12200", "WARSZAWA", NOW, 22.4, 3.1, 0.0, 1013.2);
+        return new MeteoData("12200", "WARSZAWA", NOW, 22.4, 3.1, 0.0);
     }
 
     private HydroData fullHydroData() {

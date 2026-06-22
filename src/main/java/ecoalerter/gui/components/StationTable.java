@@ -10,6 +10,7 @@ import javax.swing.SwingConstants;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableColumn;
+import javax.swing.table.TableRowSorter;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -65,6 +66,16 @@ public class StationTable extends JPanel {
 
         TableColumn statusColumn = table.getColumnModel().getColumn(5);
         statusColumn.setCellRenderer(new StatusCellRenderer());
+
+        // Sortowanie po kliknięciu nagłówka: 1. klik = rosnąco, 2. klik = malejąco,
+        // 3. klik = powrót do układu pierwotnego (domyślne zachowanie TableRowSorter).
+        // Kolumny ID i Interwał wyglądają jak liczby, więc dostają komparator
+        // numeryczny — bez tego sortowałyby się alfabetycznie po znakach
+        // (np. "150180180" przed "12200").
+        TableRowSorter<StationTableModel> sorter = new TableRowSorter<>(model);
+        sorter.setComparator(1, TableSortUtil.numeric()); // ID
+        sorter.setComparator(4, TableSortUtil.numeric()); // Interwał (s)
+        table.setRowSorter(sorter);
 
         add(new JScrollPane(table), BorderLayout.CENTER);
     }
@@ -128,7 +139,7 @@ public class StationTable extends JPanel {
     // =========================================================================
 
     private class StationTableModel extends AbstractTableModel {
-		private static final long serialVersionUID = -9007172792523411385L;
+		private static final long serialVersionUID = 1269118445228613280L;
 		
 		private List<Station> stations = new ArrayList<>();
         private final Map<String, NotificationService.StationStatus> statuses = new HashMap<>();
@@ -217,6 +228,7 @@ public class StationTable extends JPanel {
 
     private class StatusCellRenderer extends DefaultTableCellRenderer {
 		private static final long serialVersionUID = 6485208374860362415L;
+		
 
 		StatusCellRenderer() {
             setHorizontalAlignment(SwingConstants.CENTER);

@@ -86,7 +86,7 @@ class JsonFileWriterTest {
 
     @Test
     void writeMeteo_withNullFields_preservesNulls() throws PersistenceException {
-        MeteoData data = new MeteoData("12200", "WARSZAWA", T1, null, null, null, null);
+        MeteoData data = new MeteoData("12200", "WARSZAWA", T1, null, null, null);
 
         writer.writeMeteo(data);
         MeteoData loaded = writer.readMeteo("12200", "WARSZAWA").get(0);
@@ -191,7 +191,7 @@ class JsonFileWriterTest {
 
     private MeteoData meteoData(String id, String name, LocalDateTime ts,
                                 double temp, double wind) {
-        return new MeteoData(id, name, ts, temp, wind, 0.0, 1013.0);
+        return new MeteoData(id, name, ts, temp, wind, 0.0);
     }
 
     private HydroData hydroData(String id, String name, LocalDateTime ts,

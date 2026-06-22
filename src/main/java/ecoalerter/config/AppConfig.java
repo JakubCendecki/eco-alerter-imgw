@@ -14,14 +14,24 @@ import java.util.Properties;
 /**
  * Centralny punkt dostępu do konfiguracji aplikacji.
  *
- * Ładuje {@code app.properties} w następującej kolejności priorytetów:
- *   Ścieżka podana przez argument {@code --config /ścieżka/do/pliku}
- *   Plik {@code app.properties} w katalogu roboczym aplikacji
- *   Wbudowane wartości domyślne z {@code resources/app.properties}
+ * <p>Ładuje {@code app.properties} w następującej kolejności priorytetów:
+ * <ol>
+ *   <li>Ścieżka podana przez argument {@code --config /ścieżka/do/pliku}</li>
+ *   <li>Plik {@code app.properties} w katalogu roboczym aplikacji</li>
+ *   <li>Wbudowane wartości domyślne z {@code resources/app.properties}</li>
+ * </ol>
  *
- * Singleton — jeden egzemplarz na aplikację, tworzony przez {@link #load()}.
-*/
+ * <p>Singleton — jeden egzemplarz na aplikację, tworzony przez {@link #load()}.
+ *
+ * <p>Przykład użycia:
+ * <pre>
+ *     AppConfig config = AppConfig.load();
+ *     // lub z niestandardową ścieżką:
+ *     AppConfig config = AppConfig.load(Paths.get("/etc/ecoalerter/app.properties"));
+ * </pre>
+ */
 public class AppConfig {
+
     private static final Logger log = LogManager.getLogger(AppConfig.class);
 
     /** Nazwa pliku konfiguracyjnego w katalogu roboczym i na classpath. */
@@ -29,11 +39,15 @@ public class AppConfig {
 
     private final Properties props;
 
+    // -------------------------------------------------------------------------
+    // Statyczne metody fabryczne
+    // -------------------------------------------------------------------------
+
     /**
      * Ładuje konfigurację z domyślnej lokalizacji.
      * Szuka {@code app.properties} w katalogu roboczym,
      * a jako fallback używa wbudowanych wartości domyślnych.
-    */
+     */
     public static AppConfig load() {
         Path workDir = Paths.get(System.getProperty("user.dir"), CONFIG_FILE_NAME);
         return load(workDir);
@@ -44,7 +58,7 @@ public class AppConfig {
      * Jeśli plik nie istnieje — wraca do wbudowanych wartości domyślnych.
      *
      * @param configPath ścieżka do pliku .properties
-    */
+     */
     public static AppConfig load(Path configPath) {
         Properties defaults = loadDefaults();
         Properties merged   = new Properties(defaults);
@@ -64,10 +78,18 @@ public class AppConfig {
         return new AppConfig(merged);
     }
 
+    // -------------------------------------------------------------------------
+    // Konstruktor (prywatny)
+    // -------------------------------------------------------------------------
+
     private AppConfig(Properties props) {
         this.props = props;
         log.debug("AppConfig zainicjalizowany z {} kluczami", props.size());
     }
+
+    // -------------------------------------------------------------------------
+    // Persystencja
+    // -------------------------------------------------------------------------
 
     /** Tryb zapisu danych: {@code FILE} lub {@code DATABASE}. */
     public PersistenceMode getPersistenceMode() {
@@ -84,6 +106,10 @@ public class AppConfig {
         return get("storage.file.dir");
     }
 
+    // -------------------------------------------------------------------------
+    // Baza danych
+    // -------------------------------------------------------------------------
+
     public String getDbUrl()      { return get("db.url"); }
     public String getDbUser()     { return get("db.user"); }
     public String getDbPassword() { return get("db.password"); }
@@ -92,6 +118,10 @@ public class AppConfig {
     public int getDbPoolMax() {
         return getInt("db.pool.max", 5);
     }
+
+    // -------------------------------------------------------------------------
+    // API IMGW
+    // -------------------------------------------------------------------------
 
     public String getApiBaseUrl() {
         return get("api.imgw.base.url");
@@ -107,10 +137,18 @@ public class AppConfig {
         return getInt("api.retry.count", 3);
     }
 
+    // -------------------------------------------------------------------------
+    // Scheduler
+    // -------------------------------------------------------------------------
+
     /** Domyślny interwał odpytywania API w sekundach (nadpisywalny per stacja w GUI). */
     public int getSchedulerDefaultIntervalSeconds() {
         return getInt("scheduler.default.interval.seconds", 300);
     }
+
+    // -------------------------------------------------------------------------
+    // Ostrzeżenia
+    // -------------------------------------------------------------------------
 
     public boolean isWarningsEnabled() {
         return getBool("warnings.enabled", true);
@@ -127,14 +165,22 @@ public class AppConfig {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Logowanie
+    // -------------------------------------------------------------------------
+
     public String getLogLevel()        { return get("log.level"); }
     public boolean isLogFileEnabled()  { return getBool("log.file.enabled", true); }
     public String getLogFileDir()      { return get("log.file.dir"); }
 
+    // -------------------------------------------------------------------------
+    // DataTypeConfig — zakres zbieranych danych
+    // -------------------------------------------------------------------------
+
     /**
      * Buduje i zwraca obiekt {@link DataTypeConfig} na podstawie aktualnych properties.
      * Metoda tworzy nowy obiekt przy każdym wywołaniu (nie cachuje).
-    */
+     */
     public DataTypeConfig getDataTypeConfig() {
         DataTypeConfig cfg = new DataTypeConfig();
 
@@ -145,7 +191,6 @@ public class AppConfig {
         cfg.setTemperatureEnabled(getBool("data.meteo.temperature", true));
         cfg.setWindEnabled(getBool("data.meteo.wind", true));
         cfg.setPrecipitationEnabled(getBool("data.meteo.precipitation", true));
-        cfg.setPressureEnabled(getBool("data.meteo.pressure", true));
 
         cfg.setWaterLevelEnabled(getBool("data.hydro.waterLevel", true));
         cfg.setWaterTemperatureEnabled(getBool("data.hydro.waterTemperature", true));
@@ -155,7 +200,13 @@ public class AppConfig {
         return cfg;
     }
 
-    /** Zwraca surową wartość właściwości lub pusty String jeśli nie istnieje. */
+    // -------------------------------------------------------------------------
+    // Dostęp do surowych wartości (dla modułów zewnętrznych)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Zwraca surową wartość właściwości lub pusty String jeśli nie istnieje.
+     */
     public String getRaw(String key) {
         return props.getProperty(key, "");
     }
@@ -163,18 +214,21 @@ public class AppConfig {
     /**
      * Ustawia właściwość w pamięci (nie zapisuje do pliku).
      * Używane przez SettingsPanel do live-reload wybranych wartości.
-    */
+     */
     public void setRaw(String key, String value) {
         props.setProperty(key, value);
         log.debug("Konfiguracja zaktualizowana w pamięci: {} = {}", key, value);
     }
 
+    // -------------------------------------------------------------------------
+    // Metody pomocnicze
+    // -------------------------------------------------------------------------
+
     /** Odczyt String z pustym stringiem jako fallback (nigdy null). */
     private String get(String key) {
         return props.getProperty(key, "").trim();
     }
-    
-    /** Odczytuje Int lub jeśli pole nie istnieje, ustawia wartość na defaultValue */
+
     private int getInt(String key, int defaultValue) {
         String raw = get(key);
         if (raw.isEmpty()) return defaultValue;
@@ -186,7 +240,6 @@ public class AppConfig {
         }
     }
 
-    /** Odczytuje key i jeśli jest równy wartości "true", "1" lub "yes" zwraca True, inaczej zwraca False */
     private boolean getBool(String key, boolean defaultValue) {
         String raw = get(key);
         if (raw.isEmpty()) return defaultValue;
@@ -236,7 +289,6 @@ public class AppConfig {
         p.setProperty("data.meteo.temperature",              "true");
         p.setProperty("data.meteo.wind",                     "true");
         p.setProperty("data.meteo.precipitation",            "true");
-        p.setProperty("data.meteo.pressure",                 "true");
         p.setProperty("data.hydro.waterLevel",               "true");
         p.setProperty("data.hydro.waterTemperature",         "true");
     }

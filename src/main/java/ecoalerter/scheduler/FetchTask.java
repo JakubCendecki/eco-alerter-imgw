@@ -180,7 +180,6 @@ public class FetchTask implements Runnable {
         if (!dataTypeConfig.isTemperatureEnabled())   data.setTemperature(null);
         if (!dataTypeConfig.isWindEnabled())           data.setWindSpeed(null);
         if (!dataTypeConfig.isPrecipitationEnabled())  data.setPrecipitation(null);
-        if (!dataTypeConfig.isPressureEnabled())       data.setPressure(null);
 
         if (!data.hasAnyMeasurement()) {
             log.debug("Wszystkie pola meteo wyłączone — pomijam zapis dla {}", station.getId());

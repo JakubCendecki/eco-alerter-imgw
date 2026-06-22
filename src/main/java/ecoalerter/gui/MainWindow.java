@@ -3,7 +3,6 @@ package ecoalerter.gui;
 import ecoalerter.config.AppConfig;
 import ecoalerter.gui.components.StatusBar;
 import ecoalerter.gui.panels.DataViewPanel;
-import ecoalerter.gui.panels.SchedulerPanel;
 import ecoalerter.gui.panels.SettingsPanel;
 import ecoalerter.gui.panels.StationManagerPanel;
 import ecoalerter.gui.panels.WarningPanel;
@@ -13,8 +12,10 @@ import ecoalerter.service.NotificationService;
 import ecoalerter.service.StationService;
 import ecoalerter.service.WarningService;
 import ecoalerter.util.AppLogger;
+import ecoalerter.util.IconLoader;
 import org.apache.logging.log4j.Logger;
 
+import javax.swing.ImageIcon;
 import javax.swing.JFrame;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
@@ -44,24 +45,21 @@ import java.util.List;
  * kolejności, a następnie kończy aplikację.
  */
 public class MainWindow extends JFrame implements NotificationService.AppEventListener {
+	private static final long serialVersionUID = 547929200878126423L;
 
-    private static final Logger log = AppLogger.get(MainWindow.class);
+	private static final Logger log = AppLogger.get(MainWindow.class);
 
     private static final String APP_TITLE   = "EcoAlerter IMGW";
     private static final int    STATUS_REFRESH_INTERVAL_MS = 5_000;
 
     private final StationService         stationService;
-    private final DataCollectionService  dataCollectionService;
-    private final WarningService         warningService;
     private final NotificationService    notificationService;
     private final TaskSchedulerManager   scheduler;
-    private final AppConfig              config;
 
     private final StatusBar             statusBar;
     private final StationManagerPanel   stationManagerPanel;
     private final DataViewPanel         dataViewPanel;
     private final WarningPanel          warningPanel;
-    private final SchedulerPanel        schedulerPanel;
     private final SettingsPanel         settingsPanel;
 
     private final Timer statusRefreshTimer;
@@ -80,21 +78,18 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
         super(APP_TITLE);
 
         this.stationService        = stationService;
-        this.dataCollectionService = dataCollectionService;
-        this.warningService        = warningService;
         this.notificationService   = notificationService;
         this.scheduler              = scheduler;
-        this.config                 = config;
 
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         setMinimumSize(new Dimension(1024, 700));
+        applyAppIcon();
 
         this.statusBar            = new StatusBar();
         this.stationManagerPanel  = new StationManagerPanel(
                 stationService, dataCollectionService, notificationService);
         this.dataViewPanel        = new DataViewPanel(stationService, dataCollectionService, notificationService);
         this.warningPanel         = new WarningPanel(warningService, notificationService);
-        this.schedulerPanel       = new SchedulerPanel(stationService, notificationService);
         this.settingsPanel        = new SettingsPanel(config, dataCollectionService);
 
         settingsPanel.setOnRestartRequested(this::handleWindowClosing);
@@ -102,10 +97,9 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
         setJMenuBar(buildMenuBar());
 
         JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab("Stacje",        stationManagerPanel);
+        tabs.addTab("Stacje",        IconLoader.loadScaled("station.png", 18), stationManagerPanel);
         tabs.addTab("Dane",          dataViewPanel);
-        tabs.addTab("Ostrzeżenia",   warningPanel);
-        tabs.addTab("Harmonogram",   schedulerPanel);
+        tabs.addTab("Ostrzeżenia",   IconLoader.loadScaled("warning.png", 18), warningPanel);
         tabs.addTab("Ustawienia",    settingsPanel);
 
         add(tabs, java.awt.BorderLayout.CENTER);
@@ -132,6 +126,22 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
     // Budowa menu
     // -------------------------------------------------------------------------
 
+    // -------------------------------------------------------------------------
+    // Ikona aplikacji
+    // -------------------------------------------------------------------------
+
+    /**
+     * Ustawia ikonę okna (widoczną w tytule okna i na pasku zadań systemu)
+     * z app-icon.png. Brak pliku jest obsługiwany bezpiecznie przez
+     * IconLoader — okno po prostu zostaje z domyślną ikoną Swing.
+     */
+    private void applyAppIcon() {
+        ImageIcon icon = IconLoader.load("app-icon.png");
+        if (icon != null) {
+            setIconImage(icon.getImage());
+        }
+    }
+
     private JMenuBar buildMenuBar() {
         JMenuBar menuBar = new JMenuBar();
 
@@ -151,12 +161,14 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
     }
 
     private void showAboutDialog() {
+        ImageIcon icon = IconLoader.loadScaled("app-icon.png", 48);
+
         JOptionPane.showMessageDialog(this,
                 APP_TITLE + "\n\n" +
                 "System monitorowania i rejestracji danych środowiskowych\n" +
                 "oparty na publicznym API IMGW-PIB.\n\n" +
                 "Aktywnych zadań schedulera: " + scheduler.getActiveTaskCount(),
-                "O programie", JOptionPane.INFORMATION_MESSAGE);
+                "O programie", JOptionPane.INFORMATION_MESSAGE, icon);
     }
 
     // -------------------------------------------------------------------------
@@ -223,6 +235,7 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
             case STATION_ERROR -> refreshStatusBarCounts();
             case WARNINGS_REFRESHED -> updateWarningSummaryFromEvent(event);
             case WARNING_DETECTED -> { /* obsłużone już przez WarningPanel i AlertBadge */ }
+            default -> throw new IllegalArgumentException("Unexpected value: " + event.getType());
         }
     }
 
@@ -258,7 +271,6 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
         stationManagerPanel.dispose();
         dataViewPanel.dispose();
         warningPanel.dispose();
-        schedulerPanel.dispose();
         statusBar.dispose();
 
         if (onCloseAction != null) {

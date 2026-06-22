@@ -45,7 +45,7 @@ public class CsvFileWriter {
 
     // Nagłówki kolumn
     static final String METEO_HEADER =
-            "station_id,timestamp,temperature_c,wind_speed_ms,precipitation_mm,pressure_hpa";
+            "station_id,timestamp,temperature_c,wind_speed_ms,precipitation_mm";
     static final String HYDRO_HEADER =
             "station_id,timestamp,water_level_cm,water_temperature_c,flow_m3s,ice_phenomenon,overgrowth_phenomenon";
     static final String WARNINGS_HEADER =
@@ -267,8 +267,7 @@ public class CsvFileWriter {
                 escape(DateTimeUtil.toDbString(d.getTimestamp())),
                 formatDouble(d.getTemperature()),
                 formatDouble(d.getWindSpeed()),
-                formatDouble(d.getPrecipitation()),
-                formatDouble(d.getPressure())
+                formatDouble(d.getPrecipitation())
         );
     }
 
@@ -303,7 +302,7 @@ public class CsvFileWriter {
     // =========================================================================
 
     private MeteoData parseMeteoLine(String line) {
-        List<String> f = splitCsvLine(line, 6);
+        List<String> f = splitCsvLine(line, 5);
 
         MeteoData d = new MeteoData();
         d.setStationId(unescape(f.get(0)));
@@ -311,7 +310,6 @@ public class CsvFileWriter {
         d.setTemperature(parseNullableDouble(f.get(2)));
         d.setWindSpeed(parseNullableDouble(f.get(3)));
         d.setPrecipitation(parseNullableDouble(f.get(4)));
-        d.setPressure(parseNullableDouble(f.get(5)));
         return d;
     }
 

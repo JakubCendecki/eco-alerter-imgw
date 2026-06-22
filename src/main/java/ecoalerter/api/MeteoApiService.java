@@ -1,14 +1,13 @@
 package ecoalerter.api;
 
-import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.LogManager;
 import ecoalerter.model.MeteoData;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -20,30 +19,56 @@ import java.util.Optional;
 /**
  * Serwis pobierający i parsujący dane meteorologiczne z API IMGW-PIB.
  *
- * Komunikuje się z endpointami {@code /synop} i {@code /synop/id/{id}}.
- * Odpowiedzi API są deserializowane do obiektów {@link MeteoData}.
-*/
+ * Komunikuje się z endpointami /meteo i /meteo/id/{id} — sieć automatycznych
+ * stacji pogodowych (AWS), NIE sieć stacji synoptycznych (/synop).
+ *
+ * Rzeczywista odpowiedź API (przykład):
+ *   kod_stacji, nazwa_stacji, lon, lat,
+ *   temperatura_gruntu, temperatura_gruntu_data,
+ *   temperatura_powietrza, temperatura_powietrza_data,
+ *   wiatr_kierunek, wiatr_kierunek_data,
+ *   wiatr_srednia_predkosc, wiatr_srednia_predkosc_data,
+ *   wiatr_predkosc_maksymalna, wiatr_predkosc_maksymalna_data,
+ *   wilgotnosc_wzgledna, wilgotnosc_wzgledna_data,
+ *   wiatr_poryw_10min, wiatr_poryw_10min_data,
+ *   opad_10min, opad_10min_data
+ *
+ * UWAGA — ta sieć stacji nie mierzy ciśnienia atmosferycznego, dlatego
+ * model MeteoData nie zawiera takiego pola.
+ *
+ * Każdy pomiar ma własny, niezależny znacznik czasu (podobnie jak w danych
+ * hydrologicznych). Jako kanoniczny czas całego rekordu przyjmujemy znacznik
+ * czasu temperatury powietrza (główny, najczęściej raportowany parametr),
+ * z awaryjnym przejściem na inne dostępne znaczniki tego samego rekordu.
+ */
 public class MeteoApiService {
 
     private static final Logger log = LogManager.getLogger(MeteoApiService.class);
 
-    // Format daty i godziny z API IMGW
-    private static final DateTimeFormatter API_DATE_FORMAT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH");
+    /** Format daty używany przez API — zawiera sekundy. */
+    private static final DateTimeFormatter API_DATETIME_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final ImgwApiClient apiClient;
 
+    // -------------------------------------------------------------------------
+    // Konstruktor
+    // -------------------------------------------------------------------------
+
     public MeteoApiService(ImgwApiClient apiClient) {
         this.apiClient = apiClient;
-        new GsonBuilder().create();
     }
+
+    // -------------------------------------------------------------------------
+    // Publiczny interfejs
+    // -------------------------------------------------------------------------
 
     /**
      * Pobiera dane meteorologiczne ze wszystkich aktywnych stacji IMGW.
      *
      * @return lista danych meteo; pusta lista przy błędzie parsowania
      * @throws ApiException gdy żądanie HTTP nie powiedzie się
-    */
+     */
     public List<MeteoData> fetchAllStations() throws ApiException {
         String url = ApiEndpoints.fullUrl(ApiEndpoints.METEO_ALL);
         log.info("Pobieranie danych meteo — wszystkie stacje: {}", url);
@@ -55,10 +80,10 @@ public class MeteoApiService {
     /**
      * Pobiera dane meteorologiczne dla konkretnej stacji wg jej ID IMGW.
      *
-     * @param stationId identyfikator stacji (np. {@code "12200"})
-     * @return {@link Optional} z danymi lub {@code empty()} gdy stacja nie istnieje
+     * @param stationId identyfikator stacji (np. "352230399")
+     * @return Optional z danymi lub empty() gdy stacja nie istnieje
      * @throws ApiException gdy żądanie HTTP nie powiedzie się (poza 404)
-    */
+     */
     public Optional<MeteoData> fetchById(String stationId) throws ApiException {
         if (stationId == null || stationId.isBlank()) {
             throw new IllegalArgumentException("stationId nie może być pusty");
@@ -86,7 +111,7 @@ public class MeteoApiService {
      * @param stationIds lista identyfikatorów stacji
      * @return lista zebranych danych (może być krótsza niż stationIds)
      * @throws ApiException gdy wystąpi krytyczny błąd sieci
-    */
+     */
     public List<MeteoData> fetchByIds(List<String> stationIds) throws ApiException {
         if (stationIds == null || stationIds.isEmpty()) {
             return Collections.emptyList();
@@ -98,11 +123,9 @@ public class MeteoApiService {
             try {
                 fetchById(id).ifPresent(results::add);
             } catch (ApiException e) {
-                // krytyczny błąd sieci — przerywamy całe pobieranie
                 if (e.isNetworkError()) {
                     throw e;
                 }
-                // błąd HTTP dla konkretnej stacji — logujemy i kontynuujemy
                 log.warn("Pominięto stację meteo {} z powodu błędu: {}", id, e.getMessage());
             }
         }
@@ -111,7 +134,10 @@ public class MeteoApiService {
         return results;
     }
 
-    /** Parsuje tablicę JSON z wieloma stacjami do listy {@link MeteoData}. */
+    // -------------------------------------------------------------------------
+    // Parsowanie JSON
+    // -------------------------------------------------------------------------
+
     private List<MeteoData> parseArray(String json) {
         List<MeteoData> result = new ArrayList<>();
 
@@ -135,11 +161,15 @@ public class MeteoApiService {
         return result;
     }
 
-    /** Parsuje pojedynczy obiekt JSON (jeden stacja) do {@link MeteoData}. */
     private MeteoData parseSingle(String json) {
         try {
-            JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
-            return parseObject(obj);
+            json = json.trim();
+            if (json.startsWith("[")) {
+                JsonArray arr = JsonParser.parseString(json).getAsJsonArray();
+                if (arr.isEmpty()) return null;
+                return parseObject(arr.get(0).getAsJsonObject());
+            }
+            return parseObject(JsonParser.parseString(json).getAsJsonObject());
         } catch (JsonParseException e) {
             log.error("Błąd parsowania odpowiedzi meteo (single): {}", e.getMessage());
             return null;
@@ -147,43 +177,47 @@ public class MeteoApiService {
     }
 
     /**
-     * Mapuje {@link JsonObject} na {@link MeteoData}.
-     * Pola liczbowe mogą być w API jako String lub Number — metoda obsługuje oba przypadki.
-    */
+     * Mapuje jeden rekord JSON na MeteoData, używając rzeczywistych nazw pól
+     * sieci AWS IMGW.
+     */
     private MeteoData parseObject(JsonObject obj) {
-        String stationId   = getString(obj, "id_stacji");
-        String stationName = getString(obj, "stacja");
-        String date        = getString(obj, "data_pomiaru");
-        String hour        = getString(obj, "godzina_pomiaru");
+        String stationId   = getString(obj, "kod_stacji");
+        String stationName = getString(obj, "nazwa_stacji");
 
         if (stationId == null || stationId.isBlank()) {
-            log.warn("Pominięto rekord meteo bez id_stacji");
+            log.warn("Pominięto rekord meteo bez kod_stacji");
             return null;
         }
 
-        LocalDateTime timestamp = parseTimestamp(date, hour);
+        LocalDateTime tempTime = parseDateTime(obj, "temperatura_powietrza_data");
+        LocalDateTime windTime = parseDateTime(obj, "wiatr_srednia_predkosc_data");
+        LocalDateTime precTime = parseDateTime(obj, "opad_10min_data");
 
         MeteoData data = new MeteoData();
         data.setStationId(stationId);
         data.setStationName(stationName != null ? stationName : "");
-        data.setTimestamp(timestamp);
-        data.setTemperature(getDouble(obj, "temperatura"));
-        data.setWindSpeed(getDouble(obj, "predkosc_wiatru"));
-        data.setPrecipitation(getDouble(obj, "suma_opadu"));
-        data.setPressure(getDouble(obj, "cisnienie"));
+        data.setTemperature(getDouble(obj, "temperatura_powietrza"));
+        data.setWindSpeed(getDouble(obj, "wiatr_srednia_predkosc"));
+        data.setPrecipitation(getDouble(obj, "opad_10min"));
+
+        // Znacznik czasu całego rekordu — preferujemy czas pomiaru temperatury
+        // powietrza (główny parametr), z awaryjnym przejściem na inne znaczniki.
+        data.setTimestamp(firstNonNull(tempTime, windTime, precTime));
 
         return data;
     }
 
-    /** Odczytuje String lub null jeśli pole nie istnieje lub jest null. */
+    // -------------------------------------------------------------------------
+    // Metody pomocnicze do bezpiecznego odczytu pól JSON
+    // -------------------------------------------------------------------------
+
     private String getString(JsonObject obj, String key) {
         JsonElement el = obj.get(key);
         if (el == null || el.isJsonNull()) return null;
         String val = el.getAsString().trim();
-        return val.equals("null") ? null : val;
+        return val.equals("null") || val.isEmpty() ? null : val;
     }
 
-    /** Odczytuje Double lub null jeśli pole jest puste, "null" lub nie istnieje. */
     private Double getDouble(JsonObject obj, String key) {
         JsonElement el = obj.get(key);
         if (el == null || el.isJsonNull()) return null;
@@ -197,16 +231,25 @@ public class MeteoApiService {
         }
     }
 
-    /** Łączy datę i godzinę z API w {@link LocalDateTime}. */
-    private LocalDateTime parseTimestamp(String date, String hour) {
-        if (date == null || hour == null) return LocalDateTime.now();
+    private LocalDateTime parseDateTime(JsonObject obj, String key) {
+        String raw = getString(obj, key);
+        if (raw == null) return null;
         try {
-            // Normalizacja: godzina może być "6" zamiast "06"
-            String paddedHour = hour.trim().length() == 1 ? "0" + hour.trim() : hour.trim();
-            return LocalDateTime.parse(date.trim() + " " + paddedHour, API_DATE_FORMAT);
+            return LocalDateTime.parse(raw.trim(), API_DATETIME_FORMAT);
         } catch (Exception e) {
-            log.debug("Błąd parsowania daty meteo [{} {}]: {}", date, hour, e.getMessage());
-            return LocalDateTime.now();
+            log.debug("Błąd parsowania daty meteo '{}' = '{}': {}", key, raw, e.getMessage());
+            return null;
         }
+    }
+
+    /**
+     * Zwraca pierwszy niepusty znacznik czasu z podanych kandydatów,
+     * albo aktualny czas gdy wszystkie są null.
+     */
+    private LocalDateTime firstNonNull(LocalDateTime... candidates) {
+        for (LocalDateTime candidate : candidates) {
+            if (candidate != null) return candidate;
+        }
+        return LocalDateTime.now();
     }
 }

@@ -5,9 +5,10 @@ import ecoalerter.model.WarningLevel;
 /**
  * Konfiguracja zakresu monitorowanych danych.
  *
- * Każda opcja odpowiada kluczowi w {@code app.properties}.
+ * <p>Każda opcja odpowiada kluczowi w {@code app.properties}.
  * Obiekt tworzony przez {@link AppConfig#getDataTypeConfig()}.
  *
+ * <pre>
  * # Grupy danych
  * data.meteo.enabled=true
  * data.hydro.enabled=true
@@ -17,7 +18,6 @@ import ecoalerter.model.WarningLevel;
  * data.meteo.temperature=true
  * data.meteo.wind=true
  * data.meteo.precipitation=true
- * data.meteo.pressure=true
  *
  * # Pola hydro
  * data.hydro.waterLevel=true
@@ -25,21 +25,43 @@ import ecoalerter.model.WarningLevel;
  *
  * # Filtrowanie ostrzeżeń
  * warnings.filter.level=YELLOW
-*/
+ * </pre>
+ */
 public class DataTypeConfig {
+
+    // -------------------------------------------------------------------------
+    // Grupy główne
+    // -------------------------------------------------------------------------
+
     private boolean meteoEnabled;
     private boolean hydroEnabled;
     private boolean warningsEnabled;
 
+    // -------------------------------------------------------------------------
+    // Pola meteo
+    // -------------------------------------------------------------------------
+
     private boolean temperatureEnabled;
     private boolean windEnabled;
     private boolean precipitationEnabled;
-    private boolean pressureEnabled;
+
+    // -------------------------------------------------------------------------
+    // Pola hydro
+    // -------------------------------------------------------------------------
 
     private boolean waterLevelEnabled;
     private boolean waterTemperatureEnabled;
 
+    // -------------------------------------------------------------------------
+    // Ostrzeżenia
+    // -------------------------------------------------------------------------
+
+    /** Minimalny poziom alertu wyświetlanego/zapisywanego. */
     private WarningLevel warningMinLevel;
+
+    // -------------------------------------------------------------------------
+    // Konstruktory
+    // -------------------------------------------------------------------------
 
     /** Tworzy konfigurację z domyślnymi wartościami (wszystko włączone, poziom YELLOW). */
     public DataTypeConfig() {
@@ -49,41 +71,54 @@ public class DataTypeConfig {
         this.temperatureEnabled  = true;
         this.windEnabled         = true;
         this.precipitationEnabled = true;
-        this.pressureEnabled     = true;
         this.waterLevelEnabled   = true;
         this.waterTemperatureEnabled = true;
         this.warningMinLevel     = WarningLevel.YELLOW;
     }
 
+    // -------------------------------------------------------------------------
+    // Metody pomocnicze
+    // -------------------------------------------------------------------------
+
     /**
      * Czy w ogóle którakolwiek kategoria danych jest włączona.
      * Jeśli false — scheduler nie ma co zbierać.
-    */
+     */
     public boolean hasAnyEnabled() {
         return meteoEnabled || hydroEnabled || warningsEnabled;
     }
 
-    /** Czy jakiekolwiek pole meteo jest włączone (przy włączonej grupie meteo). */
+    /**
+     * Czy jakiekolwiek pole meteo jest włączone (przy włączonej grupie meteo).
+     */
     public boolean hasAnyMeteoField() {
-        return temperatureEnabled || windEnabled || precipitationEnabled || pressureEnabled;
+        return temperatureEnabled || windEnabled || precipitationEnabled;
     }
 
-    /** Czy jakiekolwiek pole hydro jest włączone (przy włączonej grupie hydro). */
+    /**
+     * Czy jakiekolwiek pole hydro jest włączone (przy włączonej grupie hydro).
+     */
     public boolean hasAnyHydroField() {
         return waterLevelEnabled || waterTemperatureEnabled;
     }
 
-    /** Zwraca czytelny opis konfiguracji do logowania. */
+    /**
+     * Zwraca czytelny opis konfiguracji do logowania.
+     */
     @Override
     public String toString() {
         return String.format(
-                "DataTypeConfig{meteo=%b(temp=%b,wind=%b,precip=%b,press=%b), " +
+                "DataTypeConfig{meteo=%b(temp=%b,wind=%b,precip=%b), " +
                 "hydro=%b(level=%b,temp=%b), warnings=%b(minLevel=%s)}",
-                meteoEnabled, temperatureEnabled, windEnabled, precipitationEnabled, pressureEnabled,
+                meteoEnabled, temperatureEnabled, windEnabled, precipitationEnabled,
                 hydroEnabled, waterLevelEnabled, waterTemperatureEnabled,
                 warningsEnabled, warningMinLevel
         );
     }
+
+    // -------------------------------------------------------------------------
+    // Gettery i settery
+    // -------------------------------------------------------------------------
 
     public boolean isMeteoEnabled()            { return meteoEnabled; }
     public void setMeteoEnabled(boolean v)     { this.meteoEnabled = v; }
@@ -102,9 +137,6 @@ public class DataTypeConfig {
 
     public boolean isPrecipitationEnabled()    { return precipitationEnabled; }
     public void setPrecipitationEnabled(boolean v) { this.precipitationEnabled = v; }
-
-    public boolean isPressureEnabled()         { return pressureEnabled; }
-    public void setPressureEnabled(boolean v)  { this.pressureEnabled = v; }
 
     public boolean isWaterLevelEnabled()       { return waterLevelEnabled; }
     public void setWaterLevelEnabled(boolean v) { this.waterLevelEnabled = v; }

@@ -1,5 +1,6 @@
 package ecoalerter.gui.panels;
 
+import ecoalerter.gui.components.TableSortUtil;
 import ecoalerter.model.HydroData;
 import ecoalerter.model.MeteoData;
 import ecoalerter.model.Station;
@@ -22,6 +23,7 @@ import javax.swing.JTable;
 import javax.swing.JToolBar;
 import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableRowSorter;
 import java.awt.BorderLayout;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -40,11 +42,12 @@ import java.util.List;
  * bez potrzeby ręcznego przełączania zakładek.
  */
 public class DataViewPanel extends JPanel implements NotificationService.AppEventListener {
+	private static final long serialVersionUID = -2344237592882798582L;
 
-    private static final Logger log = AppLogger.get(DataViewPanel.class);
+	private static final Logger log = AppLogger.get(DataViewPanel.class);
 
     private static final String[] METEO_COLUMNS = {
-            "Czas", "Temperatura (°C)", "Wiatr (m/s)", "Opady (mm)", "Ciśnienie (hPa)"
+            "Czas", "Temperatura (°C)", "Wiatr (m/s)", "Opady (mm)"
     };
     private static final String[] HYDRO_COLUMNS = {
             "Czas", "Stan wody (cm)", "Temp. wody (°C)", "Przepływ (m³/s)", "Zjawiska"
@@ -259,7 +262,7 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
     // -------------------------------------------------------------------------
 
     private void displayMeteoData(List<MeteoData> data) {
-        setColumns(METEO_COLUMNS);
+        setColumns(METEO_COLUMNS, 3); // kolumny 1-3 (Temperatura, Wiatr, Opady) są liczbowe
         tableModel.setRowCount(0);
 
         for (MeteoData d : data) {
@@ -267,8 +270,7 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
                     DateTimeUtil.toDisplayString(d.getTimestamp()),
                     formatNullable(d.getTemperature()),
                     formatNullable(d.getWindSpeed()),
-                    formatNullable(d.getPrecipitation()),
-                    formatNullable(d.getPressure())
+                    formatNullable(d.getPrecipitation())
             });
         }
 
@@ -276,7 +278,7 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
     }
 
     private void displayHydroData(List<HydroData> data) {
-        setColumns(HYDRO_COLUMNS);
+        setColumns(HYDRO_COLUMNS, 3); // kolumny 1-3 (Stan wody, Temp. wody, Przepływ) są liczbowe; "Zjawiska" zostaje tekstowa
         tableModel.setRowCount(0);
 
         for (HydroData d : data) {
@@ -301,8 +303,28 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
         return sb.toString().trim();
     }
 
-    private void setColumns(String[] columns) {
+    /**
+     * Ustawia kolumny tabeli i odbudowuje sorter dla nowej struktury kolumn.
+     * Sorter musi być tworzony na nowo (nie tylko zmieniany komparator),
+     * bo liczba i znaczenie kolumn różni się między meteo i hydro —
+     * stary sorter mógłby mieć komparatory przypisane do złych indeksów.
+     *
+     * Kolumna 0 ("Czas") jest zawsze datą. Kolumny 1..numericColumnCount
+     * są zawsze liczbowe. Pozostałe kolumny (jeśli są) zostają z domyślnym
+     * porównaniem alfabetycznym — np. "Zjawiska" w danych hydro.
+     *
+     * @param columns            nagłówki kolumn do ustawienia
+     * @param numericColumnCount liczba kolejnych kolumn liczbowych zaczynających się od indeksu 1
+     */
+    private void setColumns(String[] columns, int numericColumnCount) {
         tableModel.setColumnIdentifiers(columns);
+
+        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
+        sorter.setComparator(0, TableSortUtil.date());
+        for (int i = 1; i <= numericColumnCount; i++) {
+            sorter.setComparator(i, TableSortUtil.numeric());
+        }
+        dataTable.setRowSorter(sorter);
     }
 
     private String formatNullable(Double value) {
@@ -322,7 +344,9 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
     // =========================================================================
 
     private static class StationComboRenderer extends javax.swing.DefaultListCellRenderer {
-        @Override
+		private static final long serialVersionUID = 867598602349618961L;
+
+		@Override
         public java.awt.Component getListCellRendererComponent(
                 javax.swing.JList<?> list, Object value, int index,
                 boolean isSelected, boolean cellHasFocus) {

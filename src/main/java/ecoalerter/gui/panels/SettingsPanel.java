@@ -53,8 +53,9 @@ import java.awt.FlowLayout;
  * app.properties wymaga edycji pliku poza aplikacją.
  */
 public class SettingsPanel extends JPanel {
+	private static final long serialVersionUID = -7830820212493657572L;
 
-    private static final Logger log = AppLogger.get(SettingsPanel.class);
+	private static final Logger log = AppLogger.get(SettingsPanel.class);
 
     private final AppConfig              config;
     private final DataCollectionService  dataCollectionService;
@@ -71,7 +72,6 @@ public class SettingsPanel extends JPanel {
     private JCheckBox temperatureBox;
     private JCheckBox windBox;
     private JCheckBox precipitationBox;
-    private JCheckBox pressureBox;
     private JCheckBox waterLevelBox;
     private JCheckBox waterTemperatureBox;
 
@@ -240,7 +240,6 @@ public class SettingsPanel extends JPanel {
         temperatureBox       = plainCheckbox("Temperatura");
         windBox              = plainCheckbox("Prędkość wiatru");
         precipitationBox     = plainCheckbox("Opady");
-        pressureBox          = plainCheckbox("Ciśnienie");
         waterLevelBox        = plainCheckbox("Stan wody");
         waterTemperatureBox  = plainCheckbox("Temperatura wody");
 
@@ -251,8 +250,6 @@ public class SettingsPanel extends JPanel {
         grid.add(windBox);
         grid.add(waterTemperatureBox);
         grid.add(precipitationBox);
-        grid.add(new JLabel());
-        grid.add(pressureBox);
         grid.add(new JLabel());
 
         JButton applyButton = new JButton("Zastosuj");
@@ -280,7 +277,6 @@ public class SettingsPanel extends JPanel {
                     config.setRaw("data.meteo.temperature", String.valueOf(temperatureBox.isSelected()));
                     config.setRaw("data.meteo.wind", String.valueOf(windBox.isSelected()));
                     config.setRaw("data.meteo.precipitation", String.valueOf(precipitationBox.isSelected()));
-                    config.setRaw("data.meteo.pressure", String.valueOf(pressureBox.isSelected()));
                     config.setRaw("data.hydro.waterLevel", String.valueOf(waterLevelBox.isSelected()));
                     config.setRaw("data.hydro.waterTemperature", String.valueOf(waterTemperatureBox.isSelected()));
                     log.info("Zakres monitorowanych danych zaktualizowany");
@@ -296,7 +292,6 @@ public class SettingsPanel extends JPanel {
         temperatureBox.setSelected(dataTypeConfig.isTemperatureEnabled());
         windBox.setSelected(dataTypeConfig.isWindEnabled());
         precipitationBox.setSelected(dataTypeConfig.isPrecipitationEnabled());
-        pressureBox.setSelected(dataTypeConfig.isPressureEnabled());
         waterLevelBox.setSelected(dataTypeConfig.isWaterLevelEnabled());
         waterTemperatureBox.setSelected(dataTypeConfig.isWaterTemperatureEnabled());
     }

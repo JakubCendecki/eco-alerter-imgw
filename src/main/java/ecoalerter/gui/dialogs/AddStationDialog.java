@@ -43,8 +43,9 @@ import java.util.Optional;
  * przez StationService.addStation() lub StationService.editStation().
  */
 public class AddStationDialog extends JDialog {
-
-    private final JTextField        idField;
+	private static final long serialVersionUID = -2753729171890014580L;
+	
+	private final JTextField        idField;
     private final JTextField        nameField;
     private final JComboBox<StationType> typeCombo;
     private final JSpinner          intervalSpinner;
@@ -76,8 +77,10 @@ public class AddStationDialog extends JDialog {
                     existing.getIntervalSeconds() > 0 ? existing.getIntervalSeconds() : 300);
             activeCheckBox.setSelected(existing.isActive());
 
-            // ID i typ są częścią identyfikatora rekordu — blokujemy edycję
-            idField.setEditable(false);
+            // ID i typ są częścią identyfikatora rekordu — blokujemy edycję.
+            // setEnabled(false) zamiast setEditable(false) — wyszarza pole
+            // wizualnie, żeby było widać, że nie da się go zmienić.
+            idField.setEnabled(false);
             typeCombo.setEnabled(false);
         }
 

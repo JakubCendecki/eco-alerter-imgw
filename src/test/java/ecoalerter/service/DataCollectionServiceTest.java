@@ -103,7 +103,6 @@ class DataCollectionServiceTest {
         cfg.setTemperatureEnabled(false);
         cfg.setWindEnabled(false);
         cfg.setPrecipitationEnabled(false);
-        cfg.setPressureEnabled(false);
         service = new DataCollectionService(meteoService, hydroService, repository, cfg);
 
         when(meteoService.fetchById("12200")).thenReturn(Optional.of(fullMeteo()));
@@ -351,7 +350,7 @@ class DataCollectionServiceTest {
     // =========================================================================
 
     private MeteoData fullMeteo() {
-        return new MeteoData("12200", "WARSZAWA", T1, 22.4, 3.1, 0.0, 1013.2);
+        return new MeteoData("12200", "WARSZAWA", T1, 22.4, 3.1, 0.0);
     }
 
     private HydroData fullHydro() {

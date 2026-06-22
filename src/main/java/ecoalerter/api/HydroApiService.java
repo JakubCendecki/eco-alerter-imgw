@@ -5,11 +5,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.LogManager;
-
 import ecoalerter.model.HydroData;
-import ecoalerter.model.MeteoData;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -21,28 +19,51 @@ import java.util.Optional;
 /**
  * Serwis pobierający i parsujący dane hydrologiczne z API IMGW-PIB.
  *
- * Komunikuje się z endpointami {@code /hydro} i {@code /hydro/id/{id}}.
- * Odpowiedzi API są deserializowane do obiektów {@link HydroData}.
-*/
+ * Komunikuje się z endpointami /hydro i /hydro/id/{id}.
+ *
+ * Rzeczywista odpowiedź API (przykład):
+ *   id_stacji, stacja, rzeka, wojewodztwo, lon, lat,
+ *   stan_wody, stan_wody_data_pomiaru,
+ *   temperatura_wody, temperatura_wody_data_pomiaru,
+ *   przeplyw, przeplyw_data,
+ *   zjawisko_lodowe, zjawisko_lodowe_data_pomiaru,
+ *   zjawisko_zarastania, zjawisko_zarastania_data_pomiaru
+ *
+ * Uwaga — każdy pomiar ma WŁASNY, niezależny znacznik czasu; mogą się
+ * różnić o miesiące (np. stan wody mierzony codziennie, a przepływ raz
+ * na kilka miesięcy). Model HydroData ma jedno pole timestamp dla całego
+ * rekordu, więc jako wartość kanoniczną przyjmujemy znacznik czasu stanu
+ * wody (najważniejszy, najczęściej aktualizowany parametr hydrologiczny),
+ * z awaryjnym przejściem na inne dostępne znaczniki gdy stan wody jest null.
+ */
 public class HydroApiService {
 
     private static final Logger log = LogManager.getLogger(HydroApiService.class);
 
-    private static final DateTimeFormatter API_DATE_FORMAT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH");
+    /** Format daty używany przez API — zawiera sekundy. */
+    private static final DateTimeFormatter API_DATETIME_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final ImgwApiClient apiClient;
+
+    // -------------------------------------------------------------------------
+    // Konstruktor
+    // -------------------------------------------------------------------------
 
     public HydroApiService(ImgwApiClient apiClient) {
         this.apiClient = apiClient;
     }
+
+    // -------------------------------------------------------------------------
+    // Publiczny interfejs
+    // -------------------------------------------------------------------------
 
     /**
      * Pobiera dane hydrologiczne ze wszystkich aktywnych stacji IMGW.
      *
      * @return lista danych hydro; pusta lista przy błędzie parsowania
      * @throws ApiException gdy żądanie HTTP nie powiedzie się
-    */
+     */
     public List<HydroData> fetchAllStations() throws ApiException {
         String url = ApiEndpoints.fullUrl(ApiEndpoints.HYDRO_ALL);
         log.info("Pobieranie danych hydro — wszystkie stacje: {}", url);
@@ -54,10 +75,10 @@ public class HydroApiService {
     /**
      * Pobiera dane hydrologiczne dla konkretnej stacji wg jej ID IMGW.
      *
-     * @param stationId identyfikator stacji (np. {@code "150180180"})
-     * @return {@link Optional} z danymi lub {@code empty()} gdy stacja nie istnieje
+     * @param stationId identyfikator stacji (np. "150180180")
+     * @return Optional z danymi lub empty() gdy stacja nie istnieje
      * @throws ApiException gdy żądanie HTTP nie powiedzie się (poza 404)
-    */
+     */
     public Optional<HydroData> fetchById(String stationId) throws ApiException {
         if (stationId == null || stationId.isBlank()) {
             throw new IllegalArgumentException("stationId nie może być pusty");
@@ -85,7 +106,7 @@ public class HydroApiService {
      * @param stationIds lista identyfikatorów stacji
      * @return lista zebranych danych
      * @throws ApiException gdy wystąpi krytyczny błąd sieci
-    */
+     */
     public List<HydroData> fetchByIds(List<String> stationIds) throws ApiException {
         if (stationIds == null || stationIds.isEmpty()) {
             return Collections.emptyList();
@@ -111,10 +132,10 @@ public class HydroApiService {
     /**
      * Filtruje listę danych hydro wg nazwy rzeki (ignoruje wielkość liter).
      *
-     * @param allData  lista danych do filtrowania
+     * @param allData   lista danych do filtrowania
      * @param riverName nazwa rzeki (np. "Wisła")
      * @return przefiltrowana lista
-    */
+     */
     public List<HydroData> filterByRiver(List<HydroData> allData, String riverName) {
         if (riverName == null || riverName.isBlank()) {
             return allData;
@@ -125,8 +146,11 @@ public class HydroApiService {
                           && d.getRiverName().toLowerCase().contains(search))
                 .toList();
     }
-    
-    /** Parsuje tablicę JSON z wieloma stacjami do listy */
+
+    // -------------------------------------------------------------------------
+    // Parsowanie JSON
+    // -------------------------------------------------------------------------
+
     private List<HydroData> parseArray(String json) {
         List<HydroData> result = new ArrayList<>();
 
@@ -150,7 +174,6 @@ public class HydroApiService {
         return result;
     }
 
-    /** Parsuje pojedynczy obiekt JSON (jeden stacja) */
     private HydroData parseSingle(String json) {
         try {
             // API może zwrócić tablicę z jednym elementem lub pojedynczy obiekt
@@ -168,48 +191,57 @@ public class HydroApiService {
     }
 
     /**
-     * Mapuje {@link JsonObject} na {@link MeteoData}.
-     * Pola liczbowe mogą być w API jako String lub Number — metoda obsługuje oba przypadki.
-    */
+     * Mapuje jeden rekord JSON na HydroData, używając rzeczywistych nazw pól
+     * API IMGW (nie skrótów zgadywanych "na oko").
+     */
     private HydroData parseObject(JsonObject obj) {
         String stationId   = getString(obj, "id_stacji");
         String stationName = getString(obj, "stacja");
         String riverName   = getString(obj, "rzeka");
-        String voivodeship = getString(obj, "województwo");
-        String date        = getString(obj, "data_pomiaru");
-        String hour        = getString(obj, "godzina_pomiaru");
+        String voivodeship = getString(obj, "wojewodztwo");
 
         if (stationId == null || stationId.isBlank()) {
             log.warn("Pominięto rekord hydro bez id_stacji");
             return null;
         }
 
-        LocalDateTime timestamp = parseTimestamp(date, hour);
+        LocalDateTime waterLevelTime = parseDateTime(obj, "stan_wody_data_pomiaru");
+        LocalDateTime waterTempTime  = parseDateTime(obj, "temperatura_wody_data_pomiaru");
+        LocalDateTime flowTime       = parseDateTime(obj, "przeplyw_data");
+        LocalDateTime iceTime        = parseDateTime(obj, "zjawisko_lodowe_data_pomiaru");
+        LocalDateTime overgrowthTime = parseDateTime(obj, "zjawisko_zarastania_data_pomiaru");
 
         HydroData data = new HydroData();
         data.setStationId(stationId);
         data.setStationName(stationName != null ? stationName : "");
         data.setRiverName(riverName != null ? riverName : "");
         data.setVoivodeship(voivodeship != null ? voivodeship : "");
-        data.setTimestamp(timestamp);
         data.setWaterLevel(getDouble(obj, "stan_wody"));
         data.setWaterTemperature(getDouble(obj, "temperatura_wody"));
+        data.setFlow(getDouble(obj, "przeplyw"));
         data.setIcePhenomenon(getInt(obj, "zjawisko_lodowe", 0));
         data.setOvergrowthPhenomenon(getInt(obj, "zjawisko_zarastania", 0));
-        data.setFlow(getDouble(obj, "przelyw"));
+
+        // Znacznik czasu całego rekordu — preferujemy czas pomiaru stanu wody
+        // (najważniejszy i najczęściej aktualizowany parametr), z awaryjnym
+        // przejściem na inne dostępne znaczniki czasu tego samego rekordu.
+        data.setTimestamp(firstNonNull(
+                waterLevelTime, waterTempTime, flowTime, iceTime, overgrowthTime));
 
         return data;
     }
-    
-    /** Odczytuje String lub null jeśli pole nie istnieje lub jest null. */
+
+    // -------------------------------------------------------------------------
+    // Metody pomocnicze do bezpiecznego odczytu pól JSON
+    // -------------------------------------------------------------------------
+
     private String getString(JsonObject obj, String key) {
         JsonElement el = obj.get(key);
         if (el == null || el.isJsonNull()) return null;
         String val = el.getAsString().trim();
-        return val.equals("null") ? null : val;
+        return val.equals("null") || val.isEmpty() ? null : val;
     }
 
-    /** Odczytuje Double lub null jeśli pole jest puste, "null" lub nie istnieje. */
     private Double getDouble(JsonObject obj, String key) {
         JsonElement el = obj.get(key);
         if (el == null || el.isJsonNull()) return null;
@@ -223,7 +255,6 @@ public class HydroApiService {
         }
     }
 
-    /** Odczytuje Int lub jeśli pole nie istnieje, ustawia wartość na defaultValue */
     private int getInt(JsonObject obj, String key, int defaultValue) {
         JsonElement el = obj.get(key);
         if (el == null || el.isJsonNull()) return defaultValue;
@@ -234,15 +265,26 @@ public class HydroApiService {
         }
     }
 
-    /** Łączy datę i godzinę z API w {@link LocalDateTime}. */
-    private LocalDateTime parseTimestamp(String date, String hour) {
-        if (date == null || hour == null) return LocalDateTime.now();
+    private LocalDateTime parseDateTime(JsonObject obj, String key) {
+        String raw = getString(obj, key);
+        if (raw == null) return null;
         try {
-            String paddedHour = hour.trim().length() == 1 ? "0" + hour.trim() : hour.trim();
-            return LocalDateTime.parse(date.trim() + " " + paddedHour, API_DATE_FORMAT);
+            return LocalDateTime.parse(raw.trim(), API_DATETIME_FORMAT);
         } catch (Exception e) {
-            log.debug("Błąd parsowania daty hydro [{} {}]: {}", date, hour, e.getMessage());
-            return LocalDateTime.now();
+            log.debug("Błąd parsowania daty hydro '{}' = '{}': {}", key, raw, e.getMessage());
+            return null;
         }
+    }
+
+    /**
+     * Zwraca pierwszy niepusty znacznik czasu z podanych kandydatów,
+     * albo aktualny czas gdy wszystkie są null (rekord bez żadnego
+     * poprawnego znacznika czasu — nie powinno się zdarzyć w praktyce).
+     */
+    private LocalDateTime firstNonNull(LocalDateTime... candidates) {
+        for (LocalDateTime candidate : candidates) {
+            if (candidate != null) return candidate;
+        }
+        return LocalDateTime.now();
     }
 }

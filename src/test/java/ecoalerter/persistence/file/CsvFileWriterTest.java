@@ -82,7 +82,7 @@ class CsvFileWriterTest {
 
     @Test
     void writeMeteo_nullValues_representedAsEmptyFields() throws Exception {
-        MeteoData data = new MeteoData("12200", "WARSZAWA", T1, null, null, null, null);
+        MeteoData data = new MeteoData("12200", "WARSZAWA", T1, null, null, null);
         writer.writeMeteo(data);
 
         Path file = resolver.resolveMeteoFile("12200", "WARSZAWA", "csv");
@@ -221,7 +221,7 @@ class CsvFileWriterTest {
 
     @Test
     void writeMeteo_stationNameWithComma_isEscapedWithQuotes() throws Exception {
-        MeteoData data = new MeteoData("99", "Warszawa, Okęcie", T1, 20.0, 0.0, 0.0, 1013.0);
+        MeteoData data = new MeteoData("99", "Warszawa, Okęcie", T1, 20.0, 0.0, 0.0);
         writer.writeMeteo(data);
 
         Path file = resolver.resolveMeteoFile("99", "Warszawa,_Okęcie", "csv");
@@ -236,7 +236,7 @@ class CsvFileWriterTest {
 
     private MeteoData meteoData(String id, String name, LocalDateTime ts,
                                 double temp, double wind) {
-        return new MeteoData(id, name, ts, temp, wind, 0.0, 1013.0);
+        return new MeteoData(id, name, ts, temp, wind, 0.0);
     }
 
     private HydroData hydroData(String id, String name, LocalDateTime ts,

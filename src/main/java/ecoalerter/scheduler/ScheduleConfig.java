@@ -17,7 +17,7 @@ import java.util.Map;
  *
  * Domyślnie wszystkie stacje korzystają z globalnego interwału z AppConfig.
  * Użytkownik może nadpisać interwał dla dowolnej stacji z poziomu GUI
- * (SchedulerPanel). Zmiany są zapisywane do pliku schedule.json.
+ * (StationManagerPanel — dialog edycji stacji). Zmiany są zapisywane do pliku schedule.json.
  *
  * Klucz mapy to stationId. Wartość 0 oznacza "użyj globalnego interwału".
  * Minimalna dozwolona wartość to 60 sekund (limit API IMGW).
