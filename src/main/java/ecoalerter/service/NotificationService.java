@@ -58,7 +58,9 @@ public class NotificationService
         /** Stacja zgłosiła błąd pobierania. */
         STATION_ERROR,
         /** Lista ostrzeżeń została odświeżona. */
-        WARNINGS_REFRESHED
+        WARNINGS_REFRESHED,
+        /** Stacja została dodana, usunięta lub edytowana — inne panele powinny się odświeżyć. */
+        STATIONS_CHANGED
     }
 
     /**
@@ -196,6 +198,23 @@ public class NotificationService
             log.error("Stacja {} jest w stanie krytycznym ({} kolejnych błędów)",
                     station.getId(), status.getConsecutiveErrors());
         }
+    }
+
+    // =========================================================================
+    // Powiadomienie o zmianie listy stacji (wywoływane z GUI po CRUD)
+    // =========================================================================
+
+    /**
+     * Publikuje zdarzenie informujące, że lista stacji się zmieniła
+     * (dodano, usunięto lub edytowano stację, albo zmieniono jej aktywność).
+     *
+     * Wywoływane przez panel zarządzający stacjami po każdej udanej operacji
+     * mutującej, żeby inne panele (podgląd danych, harmonogram) mogły
+     * odświeżyć swoje listy bez ręcznej akcji użytkownika.
+     */
+    public void notifyStationsChanged() {
+        log.debug("Lista stacji zmieniona — powiadamianie odbiorców");
+        publish(new AppEvent(EventType.STATIONS_CHANGED, null));
     }
 
     // =========================================================================

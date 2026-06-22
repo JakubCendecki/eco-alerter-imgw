@@ -2,10 +2,10 @@
 *.class
 
 # Api data
-/data/*
+/data/
 
 # Logs
-/logs/*
+/logs/
 
 # BlueJ files
 *.ctxt
@@ -26,7 +26,5 @@
 hs_err_pid*
 replay_pid*
 /.metadata/
-
-/target/*
 
 /target/

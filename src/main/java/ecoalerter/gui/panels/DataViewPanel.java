@@ -5,6 +5,7 @@ import ecoalerter.model.MeteoData;
 import ecoalerter.model.Station;
 import ecoalerter.model.StationType;
 import ecoalerter.service.DataCollectionService;
+import ecoalerter.service.NotificationService;
 import ecoalerter.service.StationService;
 import ecoalerter.util.AppLogger;
 import ecoalerter.util.DateTimeUtil;
@@ -32,11 +33,15 @@ import java.util.List;
  * 6 godzin, 24 godziny, 7 dni). Tabela danych jest budowana dynamicznie —
  * kolumny różnią się w zależności od typu stacji (METEO vs HYDRO),
  * ponieważ oba typy danych mają inny zestaw mierzonych wielkości.
+ *
+ * Implementuje NotificationService.AppEventListener — po zdarzeniu
+ * STATIONS_CHANGED (emitowanym przez StationManagerPanel po dodaniu, usunięciu
+ * lub edycji stacji) automatycznie odświeża listę stacji w combo boxie,
+ * bez potrzeby ręcznego przełączania zakładek.
  */
-public class DataViewPanel extends JPanel {
-	private static final long serialVersionUID = 8547777415887617034L;
+public class DataViewPanel extends JPanel implements NotificationService.AppEventListener {
 
-	private static final Logger log = AppLogger.get(DataViewPanel.class);
+    private static final Logger log = AppLogger.get(DataViewPanel.class);
 
     private static final String[] METEO_COLUMNS = {
             "Czas", "Temperatura (°C)", "Wiatr (m/s)", "Opady (mm)", "Ciśnienie (hPa)"
@@ -65,6 +70,7 @@ public class DataViewPanel extends JPanel {
 
     private final StationService         stationService;
     private final DataCollectionService  dataCollectionService;
+    private final NotificationService    notificationService;
 
     private final JComboBox<Station>    stationCombo;
     private final JComboBox<TimeRange>  rangeCombo;
@@ -78,11 +84,13 @@ public class DataViewPanel extends JPanel {
     // -------------------------------------------------------------------------
 
     public DataViewPanel(StationService stationService,
-                         DataCollectionService dataCollectionService) {
+                         DataCollectionService dataCollectionService,
+                         NotificationService notificationService) {
         super(new BorderLayout());
 
         this.stationService        = stationService;
         this.dataCollectionService = dataCollectionService;
+        this.notificationService   = notificationService;
 
         this.stationCombo  = new JComboBox<>();
         this.rangeCombo     = new JComboBox<>(TimeRange.values());
@@ -117,7 +125,26 @@ public class DataViewPanel extends JPanel {
         add(new JScrollPane(dataTable), BorderLayout.CENTER);
         add(summaryPanel, BorderLayout.SOUTH);
 
+        notificationService.addListener(this);
         reloadStationList();
+    }
+
+    // -------------------------------------------------------------------------
+    // NotificationService.AppEventListener
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void onEvent(NotificationService.AppEvent event) {
+        if (event.getType() == NotificationService.EventType.STATIONS_CHANGED) {
+            reloadStationList();
+        }
+    }
+
+    /**
+     * Wyrejestrowuje panel z NotificationService — wywołać przy zamykaniu zakładki/aplikacji.
+     */
+    public void dispose() {
+        notificationService.removeListener(this);
     }
 
     // -------------------------------------------------------------------------
@@ -295,9 +322,7 @@ public class DataViewPanel extends JPanel {
     // =========================================================================
 
     private static class StationComboRenderer extends javax.swing.DefaultListCellRenderer {
-		private static final long serialVersionUID = 867598602349618961L;
-
-		@Override
+        @Override
         public java.awt.Component getListCellRendererComponent(
                 javax.swing.JList<?> list, Object value, int index,
                 boolean isSelected, boolean cellHasFocus) {

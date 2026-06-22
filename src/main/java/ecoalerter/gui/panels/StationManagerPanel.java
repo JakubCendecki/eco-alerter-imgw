@@ -2,7 +2,6 @@ package ecoalerter.gui.panels;
 
 import ecoalerter.gui.components.StationTable;
 import ecoalerter.gui.dialogs.AddStationDialog;
-import ecoalerter.gui.dialogs.IntervalConfigDialog;
 import ecoalerter.model.Station;
 import ecoalerter.model.StationType;
 import ecoalerter.service.DataCollectionService;
@@ -19,7 +18,6 @@ import javax.swing.JToolBar;
 import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
 import java.util.List;
-import java.util.OptionalInt;
 
 /**
  * Panel zarządzania stacjami pomiarowymi.
@@ -33,9 +31,8 @@ import java.util.OptionalInt;
  * aktualizuje kolumnę statusu w tabeli po zdarzeniach DATA_UPDATED/STATION_ERROR.
  */
 public class StationManagerPanel extends JPanel implements NotificationService.AppEventListener {
-	private static final long serialVersionUID = -4405033777447826344L;
 
-	private static final Logger log = AppLogger.get(StationManagerPanel.class);
+    private static final Logger log = AppLogger.get(StationManagerPanel.class);
 
     private final StationService          stationService;
     private final DataCollectionService    dataCollectionService;
@@ -44,7 +41,7 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
     private final StationTable stationTable;
     private final JButton      removeButton;
     private final JButton      toggleActiveButton;
-    private final JButton      changeIntervalButton;
+    private final JButton      editButton;
     private final JButton      refreshNowButton;
 
     // -------------------------------------------------------------------------
@@ -74,8 +71,8 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         this.toggleActiveButton = new JButton("Aktywuj/Dezaktywuj");
         toggleActiveButton.addActionListener(e -> onToggleActiveSelected());
 
-        this.changeIntervalButton = new JButton("Zmień interwał...");
-        changeIntervalButton.addActionListener(e -> onChangeInterval());
+        this.editButton = new JButton("Edytuj...");
+        editButton.addActionListener(e -> onEditStation());
 
         this.refreshNowButton = new JButton("Odśwież teraz");
         refreshNowButton.addActionListener(e -> onRefreshNow());
@@ -87,7 +84,7 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         toolBar.addSeparator();
         toolBar.add(removeButton);
         toolBar.add(toggleActiveButton);
-        toolBar.add(changeIntervalButton);
+        toolBar.add(editButton);
         toolBar.addSeparator();
         toolBar.add(refreshNowButton);
 
@@ -131,7 +128,7 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
     // -------------------------------------------------------------------------
 
     private void onAddStation() {
-        AddStationDialog.showDialog(this).ifPresent(station ->
+        AddStationDialog.showAddDialog(this).ifPresent(station ->
                 new SwingWorker<Void, Void>() {
                     @Override
                     protected Void doInBackground() throws Exception {
@@ -144,6 +141,7 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
                         try {
                             get();
                             reloadStations();
+                            notificationService.notifyStationsChanged();
                         } catch (Exception e) {
                             showError("Nie udało się dodać stacji " + station.getId(), e);
                         }
@@ -173,6 +171,7 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
                     get();
                     notificationService.clearStatus(selected.getId());
                     reloadStations();
+                    notificationService.notifyStationsChanged();
                 } catch (Exception e) {
                     showError("Nie udało się usunąć stacji " + selected.getId(), e);
                 }
@@ -212,36 +211,35 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
                     showError("Nie udało się zmienić stanu stacji " + station.getId(), e);
                 } finally {
                     reloadStations();
+                    notificationService.notifyStationsChanged();
                 }
             }
         }.execute();
     }
 
-    private void onChangeInterval() {
+    private void onEditStation() {
         Station selected = stationTable.getSelectedStation();
         if (selected == null) return;
 
-        OptionalInt newInterval = IntervalConfigDialog.showDialog(this, selected);
-        if (newInterval.isEmpty()) return;
+        AddStationDialog.showEditDialog(this, selected).ifPresent(updated ->
+                new SwingWorker<Void, Void>() {
+                    @Override
+                    protected Void doInBackground() throws Exception {
+                        stationService.editStation(updated);
+                        return null;
+                    }
 
-        new SwingWorker<Void, Void>() {
-            @Override
-            protected Void doInBackground() throws Exception {
-                stationService.updateInterval(
-                        selected.getId(), selected.getType(), newInterval.getAsInt());
-                return null;
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    get();
-                    reloadStations();
-                } catch (Exception e) {
-                    showError("Nie udało się zmienić interwału stacji " + selected.getId(), e);
-                }
-            }
-        }.execute();
+                    @Override
+                    protected void done() {
+                        try {
+                            get();
+                            reloadStations();
+                            notificationService.notifyStationsChanged();
+                        } catch (Exception e) {
+                            showError("Nie udało się zaktualizować stacji " + updated.getId(), e);
+                        }
+                    }
+                }.execute());
     }
 
     private void onRefreshNow() {
@@ -318,7 +316,7 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         boolean hasSelection = stationTable.getSelectedStation() != null;
         removeButton.setEnabled(hasSelection);
         toggleActiveButton.setEnabled(hasSelection);
-        changeIntervalButton.setEnabled(hasSelection);
+        editButton.setEnabled(hasSelection);
         refreshNowButton.setEnabled(hasSelection);
     }
 

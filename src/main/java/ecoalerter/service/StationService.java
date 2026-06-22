@@ -28,7 +28,7 @@ public class StationService {
 
     private final DataRepository       repository;
     private final TaskSchedulerManager scheduler;
-    
+    private final AppConfig            config;
 
     // -------------------------------------------------------------------------
     // Konstruktor
@@ -39,6 +39,7 @@ public class StationService {
                           AppConfig config) {
         this.repository = repository;
         this.scheduler  = scheduler;
+        this.config     = config;
     }
 
     // -------------------------------------------------------------------------
@@ -81,6 +82,45 @@ public class StationService {
         repository.deleteStation(stationId, type);
         AppLogger.logStationChange("USUNIETO", stationId, "", type.name());
         log.info("Usunięto stację {} [{}]", stationId, type);
+    }
+
+    // -------------------------------------------------------------------------
+    // Edycja stacji (nazwa, interwał, aktywność — nie ID i typ, które są
+    // częścią identyfikatora rekordu)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Aktualizuje istniejącą stację (nazwa, interwał, aktywność) w jednej operacji.
+     *
+     * ID i typ stacji nie mogą być zmienione przez edycję — stanowią złożony
+     * klucz identyfikujący rekord w repozytorium; zmiana ID/typu oznaczałaby
+     * w praktyce inny rekord, nie edycję istniejącego.
+     *
+     * W przeciwieństwie do addStation() (które planuje zadanie tylko gdy stacja
+     * jest aktywna, ale nigdy nie anuluje istniejącego), ta metoda poprawnie
+     * obsługuje też przejście aktywna -> nieaktywna, anulując zadanie w schedulerze.
+     *
+     * @param updated stacja z nowymi wartościami pól (ID i typ muszą wskazywać
+     *                na istniejący rekord)
+     * @throws PersistenceException gdy zapis do repozytorium się nie powiedzie
+     * @throws IllegalArgumentException gdy updated lub jego ID jest null
+     */
+    public void editStation(Station updated) throws PersistenceException {
+        if (updated == null || updated.getId() == null) {
+            throw new IllegalArgumentException("Stacja i jej ID nie mogą być null");
+        }
+
+        repository.saveStation(updated);
+
+        if (updated.isActive()) {
+            scheduler.scheduleStation(updated);
+        } else {
+            scheduler.unscheduleStation(updated.getId());
+        }
+
+        AppLogger.logConfigChange("station.edit." + updated.getId(),
+                "—", updated.getDisplayLabel());
+        log.info("Zaktualizowano stację: {}", updated.getDisplayLabel());
     }
 
     // -------------------------------------------------------------------------

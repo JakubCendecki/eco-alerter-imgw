@@ -44,16 +44,18 @@ import java.util.List;
  * kolejności, a następnie kończy aplikację.
  */
 public class MainWindow extends JFrame implements NotificationService.AppEventListener {
-	private static final long serialVersionUID = -3013583521813362413L;
 
-	private static final Logger log = AppLogger.get(MainWindow.class);
+    private static final Logger log = AppLogger.get(MainWindow.class);
 
     private static final String APP_TITLE   = "EcoAlerter IMGW";
     private static final int    STATUS_REFRESH_INTERVAL_MS = 5_000;
 
     private final StationService         stationService;
+    private final DataCollectionService  dataCollectionService;
+    private final WarningService         warningService;
     private final NotificationService    notificationService;
     private final TaskSchedulerManager   scheduler;
+    private final AppConfig              config;
 
     private final StatusBar             statusBar;
     private final StationManagerPanel   stationManagerPanel;
@@ -78,8 +80,11 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
         super(APP_TITLE);
 
         this.stationService        = stationService;
+        this.dataCollectionService = dataCollectionService;
+        this.warningService        = warningService;
         this.notificationService   = notificationService;
         this.scheduler              = scheduler;
+        this.config                 = config;
 
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         setMinimumSize(new Dimension(1024, 700));
@@ -87,10 +92,12 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
         this.statusBar            = new StatusBar();
         this.stationManagerPanel  = new StationManagerPanel(
                 stationService, dataCollectionService, notificationService);
-        this.dataViewPanel        = new DataViewPanel(stationService, dataCollectionService);
+        this.dataViewPanel        = new DataViewPanel(stationService, dataCollectionService, notificationService);
         this.warningPanel         = new WarningPanel(warningService, notificationService);
-        this.schedulerPanel       = new SchedulerPanel(stationService, config);
+        this.schedulerPanel       = new SchedulerPanel(stationService, notificationService);
         this.settingsPanel        = new SettingsPanel(config, dataCollectionService);
+
+        settingsPanel.setOnRestartRequested(this::handleWindowClosing);
 
         setJMenuBar(buildMenuBar());
 
@@ -100,14 +107,6 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
         tabs.addTab("Ostrzeżenia",   warningPanel);
         tabs.addTab("Harmonogram",   schedulerPanel);
         tabs.addTab("Ustawienia",    settingsPanel);
-
-        // Po przełączeniu na zakładkę "Dane" odśwież listę stacji w combo,
-        // bo użytkownik mógł dodać/usunąć stację w innej zakładce
-        tabs.addChangeListener(e -> {
-            if (tabs.getSelectedComponent() == dataViewPanel) {
-                dataViewPanel.reloadStationList();
-            }
-        });
 
         add(tabs, java.awt.BorderLayout.CENTER);
         add(statusBar, java.awt.BorderLayout.SOUTH);
@@ -257,7 +256,9 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
         notificationService.removeListener(this);
 
         stationManagerPanel.dispose();
+        dataViewPanel.dispose();
         warningPanel.dispose();
+        schedulerPanel.dispose();
         statusBar.dispose();
 
         if (onCloseAction != null) {

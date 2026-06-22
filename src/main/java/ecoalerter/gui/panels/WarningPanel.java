@@ -38,9 +38,8 @@ import java.util.List;
  * przycisku odśwież.
  */
 public class WarningPanel extends JPanel implements NotificationService.AppEventListener {
-	private static final long serialVersionUID = -269700932992530268L;
 
-	private static final Logger log = AppLogger.get(WarningPanel.class);
+    private static final Logger log = AppLogger.get(WarningPanel.class);
 
     private static final String[] COLUMNS = {
             "Poziom", "Typ", "Zjawisko", "Prob. (%)", "Wydano", "Ważne do"
@@ -57,7 +56,6 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
 
     private enum FilterOption {
         ALL("Wszystkie", null),
-        YELLOW_PLUS("Żółte i wyżej", WarningLevel.YELLOW),
         ORANGE_PLUS("Pomarańczowe i wyżej", WarningLevel.ORANGE),
         RED_ONLY("Tylko czerwone", WarningLevel.RED);
 
@@ -203,9 +201,8 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
     // =========================================================================
 
     private static class WarningTableModel extends AbstractTableModel {
-		private static final long serialVersionUID = -1433756110399268889L;
-		
-		private List<Warning> allWarnings      = new ArrayList<>();
+
+        private List<Warning> allWarnings      = new ArrayList<>();
         private List<Warning> filteredWarnings = new ArrayList<>();
 
         void setAllWarnings(List<Warning> warnings) {
@@ -261,9 +258,8 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
     // =========================================================================
 
     private class WarningRowRenderer extends DefaultTableCellRenderer {
-		private static final long serialVersionUID = 6773993286828545130L;
 
-		@Override
+        @Override
         public Component getTableCellRendererComponent(JTable tbl, Object value,
                                                         boolean isSelected, boolean hasFocus,
                                                         int row, int column) {

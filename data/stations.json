@@ -1,7 +1,21 @@
 [
   {
-    "id": "252210290",
-    "name": "RB",
+    "id": "153190040",
+    "name": "P2",
+    "type": "HYDRO",
+    "active": true,
+    "intervalSeconds": 300
+  },
+  {
+    "id": "151140030",
+    "name": "P1",
+    "type": "HYDRO",
+    "active": true,
+    "intervalSeconds": 300
+  },
+  {
+    "id": "1",
+    "name": "XD",
     "type": "METEO",
     "active": true,
     "intervalSeconds": 300

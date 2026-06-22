@@ -1,14 +1,14 @@
 package ecoalerter.gui.panels;
 
-import ecoalerter.config.AppConfig;
 import ecoalerter.model.Station;
+import ecoalerter.model.StationType;
+import ecoalerter.service.NotificationService;
 import ecoalerter.service.StationService;
 import ecoalerter.util.AppLogger;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
-import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -21,35 +21,37 @@ import javax.swing.table.AbstractTableModel;
 import javax.swing.DefaultCellEditor;
 import javax.swing.table.TableColumn;
 import java.awt.BorderLayout;
-import java.awt.FlowLayout;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Panel konfiguracji harmonogramu — pozwala przeglądać i edytować interwał
- * odpytywania API dla każdej stacji z osobna, oraz globalny interwał domyślny.
+ * odpytywania API dla każdej stacji z osobna.
+ *
+ * Domyślny interwał globalny (dla nowych stacji bez własnego ustawienia)
+ * jest konfigurowany w zakładce Ustawienia, nie tutaj — ten panel dotyczy
+ * wyłącznie interwałów przypisanych do konkretnych, istniejących stacji.
  *
  * Zmiana wartości w kolumnie "Interwał (s)" nie jest stosowana natychmiast —
  * użytkownik musi kliknąć "Zastosuj zmiany", co pozwala na edycję wielu
  * stacji naraz przed wysłaniem żądań do StationService (każde wywołanie
  * StationService.updateInterval() przeplanowuje zadanie w schedulerze).
  *
- * Zmiana globalnego interwału domyślnego aktualizuje konfigurację tylko
- * w pamięci (AppConfig.setRaw) — obowiązuje do końca sesji aplikacji,
- * nowe stacje dodane bez własnego interwału będą używać nowej wartości.
- * Trwałe zapisanie do app.properties wymaga edycji pliku poza aplikacją.
+ * Implementuje NotificationService.AppEventListener — po zdarzeniu
+ * STATIONS_CHANGED (dodanie/usunięcie/edycja stacji w innej zakładce)
+ * automatycznie przeładowuje listę, bez ręcznego klikania "Odśwież listę".
  */
-public class SchedulerPanel extends JPanel {
-	private static final long serialVersionUID = -2301292350564974112L;
+public class SchedulerPanel extends JPanel implements NotificationService.AppEventListener {
 
-	private static final Logger log = AppLogger.get(SchedulerPanel.class);
+    private static final Logger log = AppLogger.get(SchedulerPanel.class);
 
-    private final StationService stationService;
-    private final AppConfig      config;
+    private final StationService      stationService;
+    private final NotificationService notificationService;
 
     private final SchedulerTableModel tableModel;
     private final JTable              table;
-    private final JSpinner            globalIntervalSpinner;
     private final JButton             applyButton;
     private final JButton             refreshButton;
 
@@ -57,19 +59,18 @@ public class SchedulerPanel extends JPanel {
     // Konstruktor
     // -------------------------------------------------------------------------
 
-    public SchedulerPanel(StationService stationService, AppConfig config) {
+    public SchedulerPanel(StationService stationService, NotificationService notificationService) {
         super(new BorderLayout());
 
-        this.stationService = stationService;
-        this.config         = config;
+        this.stationService      = stationService;
+        this.notificationService = notificationService;
 
         this.tableModel = new SchedulerTableModel();
         this.table      = new JTable(tableModel);
         table.setRowHeight(24);
 
         TableColumn intervalColumn = table.getColumnModel().getColumn(3);
-        intervalColumn.setCellEditor(new DefaultCellEditor(
-                new javax.swing.JTextField()) {
+        intervalColumn.setCellEditor(new DefaultCellEditor(new javax.swing.JTextField()) {
             // Prosty edytor tekstowy z walidacją liczby >= 60 przy zatwierdzeniu
             @Override
             public boolean stopCellEditing() {
@@ -92,13 +93,9 @@ public class SchedulerPanel extends JPanel {
             }
         });
 
-        this.globalIntervalSpinner = new JSpinner(
-                new SpinnerNumberModel(config.getSchedulerDefaultIntervalSeconds(), 60, 86_400, 30));
-        this.applyButton  = new JButton("Zastosuj zmiany");
+        this.applyButton   = new JButton("Zastosuj zmiany");
         this.refreshButton = new JButton("Odśwież listę");
 
-        JButton applyGlobalButton = new JButton("Zastosuj domyślny");
-        applyGlobalButton.addActionListener(e -> onApplyGlobalDefault());
         applyButton.addActionListener(e -> onApplyChanges());
         refreshButton.addActionListener(e -> reloadStations());
 
@@ -109,19 +106,10 @@ public class SchedulerPanel extends JPanel {
         toolBar.addSeparator();
         toolBar.add(applyButton);
 
-        JPanel globalPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 6));
-        globalPanel.setBorder(BorderFactory.createTitledBorder("Domyślny interwał (dla nowych stacji bez własnego ustawienia)"));
-        globalPanel.add(new JLabel("Interwał (s):"));
-        globalPanel.add(globalIntervalSpinner);
-        globalPanel.add(applyGlobalButton);
-
-        JPanel northPanel = new JPanel(new BorderLayout());
-        northPanel.add(toolBar, BorderLayout.NORTH);
-        northPanel.add(globalPanel, BorderLayout.SOUTH);
-
-        add(northPanel, BorderLayout.NORTH);
+        add(toolBar, BorderLayout.NORTH);
         add(new JScrollPane(table), BorderLayout.CENTER);
 
+        notificationService.addListener(this);
         reloadStations();
     }
 
@@ -184,6 +172,7 @@ public class SchedulerPanel extends JPanel {
                 applyButton.setEnabled(true);
                 tableModel.clearPendingChanges();
                 reloadStations();
+                notificationService.notifyStationsChanged();
 
                 if (!failed.isEmpty()) {
                     JOptionPane.showMessageDialog(SchedulerPanel.this,
@@ -194,21 +183,22 @@ public class SchedulerPanel extends JPanel {
         }.execute();
     }
 
-    private void onApplyGlobalDefault() {
-        int newDefault = (Integer) globalIntervalSpinner.getValue();
-        String oldValue = config.getRaw("scheduler.default.interval.seconds");
+    // -------------------------------------------------------------------------
+    // NotificationService.AppEventListener
+    // -------------------------------------------------------------------------
 
-        config.setRaw("scheduler.default.interval.seconds", String.valueOf(newDefault));
+    @Override
+    public void onEvent(NotificationService.AppEvent event) {
+        if (event.getType() == NotificationService.EventType.STATIONS_CHANGED) {
+            reloadStations();
+        }
+    }
 
-        AppLogger.logConfigChange("scheduler.default.interval.seconds", oldValue,
-                String.valueOf(newDefault));
-        log.info("Domyślny interwał schedulera zmieniony na {} s (tylko w pamięci sesji)",
-                newDefault);
-
-        JOptionPane.showMessageDialog(this,
-                "Domyślny interwał ustawiony na " + newDefault + " s.\n" +
-                "Zmiana obowiązuje do końca sesji aplikacji — nie jest zapisywana do app.properties.",
-                "Zastosowano", JOptionPane.INFORMATION_MESSAGE);
+    /**
+     * Wyrejestrowuje panel z NotificationService — wywołać przy zamykaniu zakładki/aplikacji.
+     */
+    public void dispose() {
+        notificationService.removeListener(this);
     }
 
     // =========================================================================
@@ -216,14 +206,13 @@ public class SchedulerPanel extends JPanel {
     // =========================================================================
 
     private static class SchedulerTableModel extends AbstractTableModel {
-		private static final long serialVersionUID = -5268476753404732918L;
-		
-		private static final String[] COLUMNS = {"ID", "Nazwa", "Typ", "Interwał (s)"};
 
-        record PendingChange(String stationId, ecoalerter.model.StationType type, int newInterval) {}
+        private static final String[] COLUMNS = {"ID", "Nazwa", "Typ", "Interwał (s)"};
+
+        record PendingChange(String stationId, StationType type, int newInterval) {}
 
         private List<Station> stations = new ArrayList<>();
-        private final java.util.Map<String, Integer> edited = new java.util.HashMap<>();
+        private final Map<String, Integer> edited = new HashMap<>();
 
         void setStations(List<Station> newStations) {
             this.stations = new ArrayList<>(newStations);
@@ -260,8 +249,8 @@ public class SchedulerPanel extends JPanel {
 
         @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
-            Station s   = stations.get(rowIndex);
-            String key  = s.getId() + ":" + s.getType();
+            Station s       = stations.get(rowIndex);
+            String  key     = s.getId() + ":" + s.getType();
             Integer pending = edited.get(key);
 
             return switch (columnIndex) {
