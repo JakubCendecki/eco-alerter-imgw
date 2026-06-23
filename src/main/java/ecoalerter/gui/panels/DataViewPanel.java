@@ -23,7 +23,6 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSlider;
 import javax.swing.JTable;
-import javax.swing.JToolBar;
 import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
@@ -31,6 +30,7 @@ import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagLayout;
 import java.awt.event.ItemEvent;
@@ -72,6 +72,9 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
 
     /** Domyślna pozycja slajdera przy pierwszym starcie — indeks odpowiadający 24h. */
     private static final int DEFAULT_RANGE_INDEX = 4;
+
+    /** Odstęp między kontrolkami w poziomym rzędzie akcji (px) — jednolity z innymi zakładkami. */
+    private static final int BUTTON_GAP = 16;
 
     /** Klucz konfiguracji, pod którym zapamiętywany jest ostatnio wybrany zakres (w godzinach). */
     private static final String RANGE_PREF_KEY = "gui.dataview.range.hours";
@@ -118,7 +121,7 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
         this.rangeSlider      = buildRangeSlider(loadSavedRangeIndex());
         this.refreshButton    = new JButton("Odśwież");
         this.summaryLabel     = new JLabel(" ");
-        this.tableModel       = new DefaultTableModel(new String[]{"Czas"}, 0) {
+        this.tableModel       = new DefaultTableModel(new String[]{"Data i godzina pomiaru"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) { return false; }
         };
@@ -208,12 +211,10 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
         JPanel topPanel = new JPanel();
         topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
 
-        JToolBar toolBar = new JToolBar();
-        toolBar.setFloatable(false);
-        toolBar.setBorder(BorderFactory.createEmptyBorder(6, 6, 2, 6));
+        JPanel toolBar = new JPanel(new FlowLayout(FlowLayout.LEFT, BUTTON_GAP, 6));
+        toolBar.setBorder(BorderFactory.createEmptyBorder(4, 6, 2, 6));
         toolBar.add(new JLabel("Stacja: "));
         toolBar.add(stationCombo);
-        toolBar.addSeparator();
         toolBar.add(refreshButton);
 
         JPanel rangePanel = new JPanel(new BorderLayout(8, 0));
@@ -459,12 +460,12 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
 
         var dtConfig = dataCollectionService.getDataTypeConfig();
 
-        // Kolumna "Czas" jest zawsze widoczna. Pozostałe kolumny pojawiają się
+        // Kolumna "Data i godzina pomiaru" jest zawsze widoczna. Pozostałe kolumny pojawiają się
         // tylko jeśli dane pole jest włączone w Ustawieniach — wyłączone pole
         // nigdy nie ma wartości w zapisanych danych, więc kolumna z samymi "—"
         // byłaby myląca.
         List<String> columns = new ArrayList<>();
-        columns.add("Czas");
+        columns.add("Data i godzina pomiaru");
         int numericCount = 0;
         if (dtConfig.isTemperatureEnabled())   { columns.add("Temperatura (°C)"); numericCount++; }
         if (dtConfig.isWindEnabled())          { columns.add("Wiatr (m/s)");      numericCount++; }
@@ -493,7 +494,7 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
         // "Przepływ" i "Zjawiska" nie mają przełącznika w Ustawieniach —
         // są zawsze zbierane, więc zawsze widoczne, niezależnie od konfiguracji.
         List<String> columns = new ArrayList<>();
-        columns.add("Czas");
+        columns.add("Data i godzina pomiaru");
         int numericCount = 0;
         if (dtConfig.isWaterLevelEnabled())       { columns.add("Stan wody (cm)");  numericCount++; }
         if (dtConfig.isWaterTemperatureEnabled()) { columns.add("Temp. wody (°C)"); numericCount++; }
@@ -530,7 +531,7 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
      * bo liczba i znaczenie kolumn różni się między meteo i hydro —
      * stary sorter mógłby mieć komparatory przypisane do złych indeksów.
      *
-     * Kolumna 0 ("Czas") jest zawsze datą. Kolumny 1..numericColumnCount
+     * Kolumna 0 ("Data i godzina pomiaru") jest zawsze datą. Kolumny 1..numericColumnCount
      * są zawsze liczbowe. Pozostałe kolumny (jeśli są) zostają z domyślnym
      * porównaniem alfabetycznym — np. "Zjawiska" w danych hydro.
      *

@@ -159,7 +159,7 @@ public class SettingsPanel extends JPanel {
         content.add(modeRow);
         content.add(buttonRow);
 
-        return wrapTitled("Persystencja danych", content);
+        return wrapTitled("Sposób zapisywania danych", content);
     }
 
     private void onApplyPersistence() {
@@ -277,7 +277,7 @@ public class SettingsPanel extends JPanel {
         JButton applyButton = new JButton("Zastosuj");
         applyButton.addActionListener(e -> onApplyDefaultInterval());
 
-        content.add(new JLabel("Domyślny interwał dla nowych stacji (min):"), java.awt.BorderLayout.WEST);
+        content.add(new JLabel("Jak często sprawdzać nowe stacje (min):"), java.awt.BorderLayout.WEST);
         content.add(defaultIntervalSlider, java.awt.BorderLayout.CENTER);
         content.add(applyButton, java.awt.BorderLayout.EAST);
 
@@ -294,7 +294,7 @@ public class SettingsPanel extends JPanel {
                 String.valueOf(newSeconds));
 
         JOptionPane.showMessageDialog(this,
-                "Domyślny interwał ustawiony na " + newMinutes + " min.\n" +
+                "Ustawiono: sprawdzanie nowych stacji co " + newMinutes + " min.\n" +
                 "Obowiązuje od razu dla nowo planowanych stacji.",
                 "Zastosowano", JOptionPane.INFORMATION_MESSAGE);
     }
@@ -323,7 +323,7 @@ public class SettingsPanel extends JPanel {
         apiRetrySpinner = new JSpinner(new SpinnerNumberModel(
                 config.getApiRetryCount(), 0, 10, 1));
 
-        grid.add(new JLabel("Timeout żądania (s):"));
+        grid.add(new JLabel("Czas oczekiwania na odpowiedź (s):"));
         grid.add(apiTimeoutSpinner);
         grid.add(new JLabel("Liczba ponowień:"));
         grid.add(apiRetrySpinner);
@@ -337,7 +337,7 @@ public class SettingsPanel extends JPanel {
         content.add(grid);
         content.add(buttonRow);
 
-        return wrapTitled("Komunikacja z API IMGW", content);
+        return wrapTitled("Połączenie z serwerem IMGW", content);
     }
 
     private void onApplyApiSettings() {
@@ -354,7 +354,7 @@ public class SettingsPanel extends JPanel {
         AppLogger.logConfigChange("api.retry.count", oldRetries, String.valueOf(newRetries));
 
         JOptionPane.showMessageDialog(this,
-                "Ustawienia API zapisane (timeout: " + newTimeout + " s, ponowienia: " + newRetries + ").",
+                "Zapisano: czas oczekiwania " + newTimeout + " s, liczba ponowień " + newRetries + ".",
                 "Zastosowano", JOptionPane.INFORMATION_MESSAGE);
     }
 
@@ -367,7 +367,7 @@ public class SettingsPanel extends JPanel {
     // -------------------------------------------------------------------------
 
     private JPanel buildLoggingSection() {
-        JPanel panel = titledPanel("Logowanie", new GridLayout(1, 2, 8, 4));
+        JPanel panel = titledPanel("Dziennik zdarzeń", new GridLayout(1, 2, 8, 4));
 
         logLevelCombo = new JComboBox<>(new String[]{"TRACE", "DEBUG", "INFO", "WARN", "ERROR"});
         logLevelCombo.addActionListener(e -> {
@@ -382,7 +382,7 @@ public class SettingsPanel extends JPanel {
             }
         });
 
-        panel.add(new JLabel("Poziom logowania:"));
+        panel.add(new JLabel("Poziom szczegółowości dziennika:"));
         panel.add(logLevelCombo);
 
         return panel;

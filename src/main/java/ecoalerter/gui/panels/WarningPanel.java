@@ -17,7 +17,6 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
-import javax.swing.JToolBar;
 import javax.swing.SwingWorker;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -26,6 +25,7 @@ import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagLayout;
 import java.util.ArrayList;
@@ -51,11 +51,14 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
     private static final Logger log = AppLogger.get(WarningPanel.class);
 
     private static final String[] COLUMNS = {
-            "Poziom", "Typ", "Zjawisko", "Szansa na zajście (%)", "Wydano", "Ważne do"
+            "Poziom", "Typ", "Zjawisko", "Prawdopodobieństwo (%)", "Wydano", "Ważne do"
     };
 
     private static final String CARD_TABLE = "table";
     private static final String CARD_EMPTY = "empty";
+
+    /** Odstęp między przyciskami/kontrolkami w poziomym rzędzie akcji (px). */
+    private static final int BUTTON_GAP = 16;
 
     private final WarningService      warningService;
     private final NotificationService notificationService;
@@ -96,7 +99,7 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
         this.notificationService = notificationService;
 
         this.filterCombo      = new JComboBox<>(FilterOption.values());
-        this.refreshButton    = new JButton("Odśwież z IMGW");
+        this.refreshButton    = new JButton("Odśwież");
         this.lastRefreshLabel = new JLabel("Nie odświeżano");
         this.tableModel       = new WarningTableModel();
         this.table            = new JTable(tableModel);
@@ -117,15 +120,15 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
         filterCombo.addActionListener(e -> applyFilterAndDisplay());
         refreshButton.addActionListener(e -> onRefreshFromApi());
 
-        JToolBar toolBar = new JToolBar();
-        toolBar.setFloatable(false);
-        toolBar.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
-        toolBar.add(new JLabel("Filtr: "));
-        toolBar.add(filterCombo);
-        toolBar.addSeparator();
-        toolBar.add(refreshButton);
-        toolBar.add(javax.swing.Box.createHorizontalGlue());
-        toolBar.add(lastRefreshLabel);
+        JPanel filterGroup = new JPanel(new FlowLayout(FlowLayout.LEFT, BUTTON_GAP, 6));
+        filterGroup.add(new JLabel("Filtr: "));
+        filterGroup.add(filterCombo);
+        filterGroup.add(refreshButton);
+
+        JPanel toolBar = new JPanel(new BorderLayout());
+        toolBar.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
+        toolBar.add(filterGroup, BorderLayout.WEST);
+        toolBar.add(lastRefreshLabel, BorderLayout.EAST);
 
         add(toolBar, BorderLayout.NORTH);
 
@@ -185,7 +188,7 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
             @Override
             protected void done() {
                 refreshButton.setEnabled(true);
-                refreshButton.setText("Odśwież z IMGW");
+                refreshButton.setText("Odśwież");
 
                 try {
                     tableModel.setAllWarnings(get());

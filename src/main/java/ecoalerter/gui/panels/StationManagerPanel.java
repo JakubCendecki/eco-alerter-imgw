@@ -16,11 +16,11 @@ import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JToolBar;
 import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagLayout;
 import java.util.List;
@@ -28,10 +28,12 @@ import java.util.List;
 /**
  * Panel zarządzania stacjami pomiarowymi.
  *
- * Pozwala na dodawanie, usuwanie, aktywację/dezaktywację i zmianę interwału
- * stacji, oraz na manualne odświeżenie danych pojedynczej stacji poza
- * harmonogramem. Wszystkie operacje blokujące (zapis, API) wykonywane są
- * w SwingWorker, żeby nie zamrażać wątku EDT.
+ * Pozwala na dodawanie, usuwanie, edycję i zmianę aktywności stacji
+ * (aktywność przełącza się checkboxem prosto w tabeli — nie ma do tego
+ * osobnego przycisku, żeby nie duplikować tej samej akcji w dwóch miejscach),
+ * oraz na manualne odświeżenie danych pojedynczej stacji poza harmonogramem.
+ * Wszystkie operacje blokujące (zapis, API) wykonywane są w SwingWorker,
+ * żeby nie zamrażać wątku EDT.
  *
  * Implementuje NotificationService.AppEventListener — automatycznie
  * aktualizuje kolumnę statusu w tabeli po zdarzeniach DATA_UPDATED/STATION_ERROR.
@@ -43,6 +45,9 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
     private static final String CARD_TABLE = "table";
     private static final String CARD_EMPTY = "empty";
 
+    /** Odstęp między przyciskami w poziomym rzędzie akcji (px). */
+    private static final int BUTTON_GAP = 16;
+
     private final StationService          stationService;
     private final DataCollectionService    dataCollectionService;
     private final NotificationService      notificationService;
@@ -50,9 +55,8 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
     private final StationTable stationTable;
     private final JPanel       centerPanel;
     private final JButton      removeButton;
-    private final JButton      toggleActiveButton;
     private final JButton      editButton;
-    private final JButton      refreshNowButton;
+    private final JButton      refreshButton;
 
     // -------------------------------------------------------------------------
     // Konstruktor
@@ -78,25 +82,18 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         this.removeButton = new JButton("Usuń");
         removeButton.addActionListener(e -> onRemoveStation());
 
-        this.toggleActiveButton = new JButton("Aktywuj/Dezaktywuj");
-        toggleActiveButton.addActionListener(e -> onToggleActiveSelected());
-
         this.editButton = new JButton("Edytuj...");
         editButton.addActionListener(e -> onEditStation());
 
-        this.refreshNowButton = new JButton("Odśwież teraz");
-        refreshNowButton.addActionListener(e -> onRefreshNow());
+        this.refreshButton = new JButton("Odśwież");
+        refreshButton.addActionListener(e -> onRefreshNow());
 
-        JToolBar toolBar = new JToolBar();
-        toolBar.setFloatable(false);
-        toolBar.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        JPanel toolBar = new JPanel(new FlowLayout(FlowLayout.LEFT, BUTTON_GAP, 6));
+        toolBar.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
         toolBar.add(addButton);
-        toolBar.addSeparator();
         toolBar.add(removeButton);
-        toolBar.add(toggleActiveButton);
         toolBar.add(editButton);
-        toolBar.addSeparator();
-        toolBar.add(refreshNowButton);
+        toolBar.add(refreshButton);
 
         add(toolBar, BorderLayout.NORTH);
 
@@ -281,14 +278,6 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         }.execute();
     }
 
-    private void onToggleActiveSelected() {
-        Station selected = stationTable.getSelectedStation();
-        if (selected == null) return;
-
-        boolean newActive = !selected.isActive();
-        setStationActive(selected, newActive);
-    }
-
     private void onActiveToggled(Station station, boolean newActive) {
         setStationActive(station, newActive);
     }
@@ -348,7 +337,7 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         Station selected = stationTable.getSelectedStation();
         if (selected == null) return;
 
-        refreshNowButton.setEnabled(false);
+        refreshButton.setEnabled(false);
 
         new SwingWorker<Boolean, Void>() {
             private String errorMessage;
@@ -372,7 +361,7 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
 
             @Override
             protected void done() {
-                refreshNowButton.setEnabled(true);
+                refreshButton.setEnabled(true);
                 try {
                     if (!get()) {
                         JOptionPane.showMessageDialog(StationManagerPanel.this,
@@ -417,9 +406,8 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
     private void updateButtonStates() {
         boolean hasSelection = stationTable.getSelectedStation() != null;
         removeButton.setEnabled(hasSelection);
-        toggleActiveButton.setEnabled(hasSelection);
         editButton.setEnabled(hasSelection);
-        refreshNowButton.setEnabled(hasSelection);
+        refreshButton.setEnabled(hasSelection);
     }
 
     private void showError(String context, Exception e) {

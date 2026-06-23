@@ -106,7 +106,6 @@ public class AddStationDialog extends JDialog {
 
     private JSlider buildIntervalSlider() {
         JSlider slider = new JSlider(MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES, DEFAULT_INTERVAL_MINUTES);
-        slider.setMinorTickSpacing(1);
         slider.setMajorTickSpacing(5);
         slider.setSnapToTicks(true);
         slider.setPaintTicks(true);
@@ -130,7 +129,7 @@ public class AddStationDialog extends JDialog {
         addRow(panel, gbc, 0, "ID stacji (IMGW):", idField);
         addRow(panel, gbc, 1, "Nazwa:",            nameField);
         addRow(panel, gbc, 2, "Typ:",               typeCombo);
-        addRow(panel, gbc, 3, "Interwał (min):",    intervalSlider);
+        addRow(panel, gbc, 3, "Jak często sprawdzać (min):", intervalSlider);
 
         gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2;
         panel.add(activeCheckBox, gbc);
