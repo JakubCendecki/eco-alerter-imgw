@@ -113,8 +113,7 @@ public class FileRepository implements DataRepository {
 
     @Override
     public List<MeteoData> findMeteoByStation(String stationId) throws PersistenceException {
-        String stationName = resolveStationName(stationId, StationType.METEO);
-        List<MeteoData> all = jsonWriter.readMeteo(stationId, stationName);
+        List<MeteoData> all = jsonWriter.readMeteo(stationId, "");
         all.sort((a, b) -> {
             if (a.getTimestamp() == null) return 1;
             if (b.getTimestamp() == null) return -1;
@@ -181,8 +180,7 @@ public class FileRepository implements DataRepository {
 
     @Override
     public List<HydroData> findHydroByStation(String stationId) throws PersistenceException {
-        String stationName = resolveStationName(stationId, StationType.HYDRO);
-        List<HydroData> all = jsonWriter.readHydro(stationId, stationName);
+        List<HydroData> all = jsonWriter.readHydro(stationId, "");
         all.sort((a, b) -> {
             if (a.getTimestamp() == null) return 1;
             if (b.getTimestamp() == null) return -1;
@@ -298,19 +296,6 @@ public class FileRepository implements DataRepository {
                     StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         } catch (IOException e) {
             throw new PersistenceException("Błąd nadpisywania pliku: " + file, e);
-        }
-    }
-
-    private String resolveStationName(String stationId, StationType type) {
-        try {
-            return findAllStations().stream()
-                    .filter(s -> s.getId().equals(stationId) && s.getType() == type)
-                    .map(Station::getName)
-                    .findFirst()
-                    .orElse("");
-        } catch (PersistenceException e) {
-            log.debug("Nie można rozwiązać nazwy stacji {}: {}", stationId, e.getMessage());
-            return "";
         }
     }
 }
