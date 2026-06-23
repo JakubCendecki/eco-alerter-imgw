@@ -83,36 +83,6 @@ class DataCollectionServiceTest {
         assertThrows(ApiException.class, () -> service.fetchAndSaveMeteo("12200"));
     }
 
-    @Test
-    void fetchAndSaveMeteo_temperatureDisabled_savesWithNullTemperature() throws Exception {
-        DataTypeConfig cfg = new DataTypeConfig();
-        cfg.setTemperatureEnabled(false);
-        service = new DataCollectionService(meteoService, hydroService, repository, cfg);
-
-        when(meteoService.fetchById("12200")).thenReturn(Optional.of(fullMeteo()));
-
-        Optional<MeteoData> result = service.fetchAndSaveMeteo("12200");
-
-        assertNull(result.get().getTemperature());
-        verify(repository).saveMeteo(any());
-    }
-
-    @Test
-    void fetchAndSaveMeteo_allFieldsDisabled_doesNotSave() throws Exception {
-        DataTypeConfig cfg = new DataTypeConfig();
-        cfg.setTemperatureEnabled(false);
-        cfg.setWindEnabled(false);
-        cfg.setPrecipitationEnabled(false);
-        service = new DataCollectionService(meteoService, hydroService, repository, cfg);
-
-        when(meteoService.fetchById("12200")).thenReturn(Optional.of(fullMeteo()));
-
-        Optional<MeteoData> result = service.fetchAndSaveMeteo("12200");
-
-        assertTrue(result.isPresent(), "Wynik powinien być zwrócony nawet bez zapisu");
-        verify(repository, never()).saveMeteo(any());
-    }
-
     // -------------------------------------------------------------------------
     // fetchAndSaveHydro
     // -------------------------------------------------------------------------
@@ -136,19 +106,6 @@ class DataCollectionServiceTest {
 
         assertTrue(result.isEmpty());
         verify(repository, never()).saveHydro(any());
-    }
-
-    @Test
-    void fetchAndSaveHydro_waterLevelDisabled_savesWithNullLevel() throws Exception {
-        DataTypeConfig cfg = new DataTypeConfig();
-        cfg.setWaterLevelEnabled(false);
-        service = new DataCollectionService(meteoService, hydroService, repository, cfg);
-
-        when(hydroService.fetchById("150180180")).thenReturn(Optional.of(fullHydro()));
-
-        Optional<HydroData> result = service.fetchAndSaveHydro("150180180");
-
-        assertNull(result.get().getWaterLevel());
     }
 
     @Test

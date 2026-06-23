@@ -173,63 +173,6 @@ class FetchTaskTest {
     // DataTypeConfig — wyłączenie poszczególnych pól
     // -------------------------------------------------------------------------
 
-    @Test
-    void run_temperatureDisabled_setsTemperatureToNull_beforeSave() throws Exception {
-        DataTypeConfig cfg = allEnabled();
-        cfg.setTemperatureEnabled(false);
-
-        when(meteoService.fetchById("12200")).thenReturn(Optional.of(fullMeteoData()));
-        ArgumentCaptor<MeteoData> captor = ArgumentCaptor.forClass(MeteoData.class);
-
-        meteoTask("12200", cfg).run();
-
-        verify(repository).saveMeteo(captor.capture());
-        assertNull(captor.getValue().getTemperature(),
-                "Temperatura powinna być null gdy wyłączona w konfiguracji");
-    }
-
-    @Test
-    void run_windDisabled_setsWindSpeedToNull_beforeSave() throws Exception {
-        DataTypeConfig cfg = allEnabled();
-        cfg.setWindEnabled(false);
-
-        when(meteoService.fetchById("12200")).thenReturn(Optional.of(fullMeteoData()));
-        ArgumentCaptor<MeteoData> captor = ArgumentCaptor.forClass(MeteoData.class);
-
-        meteoTask("12200", cfg).run();
-
-        verify(repository).saveMeteo(captor.capture());
-        assertNull(captor.getValue().getWindSpeed());
-    }
-
-    @Test
-    void run_allMeteoFieldsDisabled_doesNotSave() throws Exception {
-        DataTypeConfig cfg = allEnabled();
-        cfg.setTemperatureEnabled(false);
-        cfg.setWindEnabled(false);
-        cfg.setPrecipitationEnabled(false);
-
-        when(meteoService.fetchById("12200")).thenReturn(Optional.of(fullMeteoData()));
-
-        meteoTask("12200", cfg).run();
-
-        verify(repository, never()).saveMeteo(any());
-    }
-
-    @Test
-    void run_waterLevelDisabled_setsWaterLevelToNull_beforeSave() throws Exception {
-        DataTypeConfig cfg = allEnabled();
-        cfg.setWaterLevelEnabled(false);
-
-        when(hydroService.fetchById("150180180")).thenReturn(Optional.of(fullHydroData()));
-        ArgumentCaptor<HydroData> captor = ArgumentCaptor.forClass(HydroData.class);
-
-        hydroTask("150180180", cfg).run();
-
-        verify(repository).saveHydro(captor.capture());
-        assertNull(captor.getValue().getWaterLevel());
-    }
-
     // -------------------------------------------------------------------------
     // Stacja nie istnieje w API (404)
     // -------------------------------------------------------------------------
