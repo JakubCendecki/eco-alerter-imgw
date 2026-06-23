@@ -1,6 +1,9 @@
 # Compiled class file
 *.class
 
+# User config
+src/main/resources/app.properties
+
 # Api data
 /data/
 

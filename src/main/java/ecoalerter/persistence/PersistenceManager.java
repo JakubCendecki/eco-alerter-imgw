@@ -24,9 +24,14 @@ import java.io.IOException;
  *   DataRepository repo = PersistenceManager.create(config, pathResolver);
  *   // ... użycie repozytorium ...
  *   repo.close();
-*/
+ */
 public final class PersistenceManager {
+
     private static final Logger log = AppLogger.get(PersistenceManager.class);
+
+    // -------------------------------------------------------------------------
+    // Fabryka
+    // -------------------------------------------------------------------------
 
     /**
      * Tworzy i konfiguruje implementację DataRepository zgodnie z trybem z konfiguracji.
@@ -38,7 +43,7 @@ public final class PersistenceManager {
      * @param pathResolver resolver ścieżek wieloplatformowych
      * @return gotowe do użycia repozytorium
      * @throws PersistenceException gdy inicjalizacja wybranego trybu się nie powiedzie
-    */
+     */
     public static DataRepository create(AppConfig config, PathResolver pathResolver)
             throws PersistenceException {
 
@@ -47,13 +52,14 @@ public final class PersistenceManager {
 
         return switch (mode) {
             case DATABASE -> initDatabase(config);
-            case FILE     -> initFile(config, pathResolver);
+            case FILE     -> initFile(pathResolver);
         };
     }
 
     // -------------------------------------------------------------------------
     // Tryb DATABASE
     // -------------------------------------------------------------------------
+
     private static DataRepository initDatabase(AppConfig config) throws PersistenceException {
         log.info("Łączenie z bazą danych: {}", config.getDbUrl());
 
@@ -80,10 +86,10 @@ public final class PersistenceManager {
     // -------------------------------------------------------------------------
     // Tryb FILE
     // -------------------------------------------------------------------------
-    private static DataRepository initFile(AppConfig config, PathResolver pathResolver)
+
+    private static DataRepository initFile(PathResolver pathResolver)
             throws PersistenceException {
-        log.info("Inicjalizacja zapisu do plików [format={}] w: {}",
-                config.getStorageFileFormat(), pathResolver.getDataDir());
+        log.info("Inicjalizacja zapisu do plików JSON w: {}", pathResolver.getDataDir());
 
         try {
             pathResolver.createRequiredDirectories();
@@ -92,6 +98,14 @@ public final class PersistenceManager {
                     "Nie można utworzyć katalogów danych: " + e.getMessage(), e);
         }
 
-        return new FileRepository(config, pathResolver);
+        return new FileRepository(pathResolver);
+    }
+
+    // -------------------------------------------------------------------------
+    // Konstruktor prywatny
+    // -------------------------------------------------------------------------
+
+    private PersistenceManager() {
+        // klasa narzędziowa — brak instancji
     }
 }

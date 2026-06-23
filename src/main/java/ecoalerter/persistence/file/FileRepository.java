@@ -1,6 +1,5 @@
 package ecoalerter.persistence.file;
 
-import ecoalerter.config.AppConfig;
 import ecoalerter.model.HydroData;
 import ecoalerter.model.MeteoData;
 import ecoalerter.model.Station;
@@ -21,48 +20,35 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Implementacja DataRepository zapisująca dane do plików JSON lub CSV.
- *
- * Format pliku jest sterowany przez storage.file.format w app.properties.
- * Obsługuje format JSON (przez JsonFileWriter) i CSV (przez CsvFileWriter).
- *
- * Stacje i ostrzeżenia są zawsze w formacie JSON niezależnie od wybranego formatu
- * danych pomiarowych, bo JSON lepiej nadaje się do struktur z opcjonalnymi polami.
+ * Implementacja DataRepository zapisująca dane do plików JSON.
  *
  * Metody filtrowania (findBy*, deleteOlderThan) są wykonywane w pamięci —
  * plik jest wczytywany, przefiltrowany i (w przypadku delete) zapisany z powrotem.
-*/
+ */
 public class FileRepository implements DataRepository {
-    private static final Logger log = AppLogger.get(FileRepository.class);
 
-    private static final String FORMAT_JSON   = "JSON";
+    private static final Logger log = AppLogger.get(FileRepository.class);
 
     private final PathResolver   pathResolver;
     private final JsonFileWriter jsonWriter;
-    private final CsvFileWriter  csvWriter;
-    private final boolean        useJson;
 
     // -------------------------------------------------------------------------
     // Konstruktor
     // -------------------------------------------------------------------------
 
-    public FileRepository(AppConfig config, PathResolver pathResolver) {
+    public FileRepository(PathResolver pathResolver) {
         this.pathResolver = pathResolver;
         this.jsonWriter   = new JsonFileWriter(pathResolver);
-        this.csvWriter    = new CsvFileWriter(pathResolver);
-        this.useJson      = FORMAT_JSON.equalsIgnoreCase(config.getStorageFileFormat());
 
-        log.info("FileRepository uruchomiony [format={}]",
-                useJson ? "JSON" : "CSV");
+        log.info("FileRepository uruchomiony [format=JSON]");
     }
 
     // =========================================================================
-    // STACJE — zawsze JSON
+    // STACJE
     // =========================================================================
 
     @Override
@@ -115,37 +101,18 @@ public class FileRepository implements DataRepository {
 
     @Override
     public void saveMeteo(MeteoData data) throws PersistenceException {
-        // Wymuszamy spójną nazwę stacji na podstawie konfiguracji słownikowej
-        String correctName = resolveStationName(data.getStationId(), StationType.METEO);
-        data.setStationName(correctName);
-
-        if (useJson) jsonWriter.writeMeteo(data);
-        else          csvWriter.writeMeteo(data);
+        jsonWriter.writeMeteo(data);
     }
 
     @Override
     public void saveAllMeteo(List<MeteoData> dataList) throws PersistenceException {
         if (dataList == null || dataList.isEmpty()) return;
-        
-        // Mapujemy poprawne nazwy dla całej listy
-        for (MeteoData data : dataList) {
-            String correctName = resolveStationName(data.getStationId(), StationType.METEO);
-            data.setStationName(correctName);
-        }
-
-        if (useJson) jsonWriter.writeMeteoList(dataList);
-        else          csvWriter.writeMeteoList(dataList);
+        jsonWriter.writeMeteoList(dataList);
         log.debug("Zapisano {} pomiarów meteo do plików", dataList.size());
     }
 
     @Override
     public List<MeteoData> findMeteoByStation(String stationId) throws PersistenceException {
-        if (!useJson) {
-            log.warn("findMeteoByStation — odczyt z CSV nie jest wspierany, zwracam pustą listę");
-            return Collections.emptyList();
-        }
-
-        // Szukamy pliku — musimy znać nazwę stacji; próbujemy przez stacje zapisane
         String stationName = resolveStationName(stationId, StationType.METEO);
         List<MeteoData> all = jsonWriter.readMeteo(stationId, stationName);
         all.sort((a, b) -> {
@@ -176,11 +143,6 @@ public class FileRepository implements DataRepository {
 
     @Override
     public int deleteMeteoOlderThan(LocalDateTime olderThan) throws PersistenceException {
-        if (!useJson) {
-            log.warn("deleteMeteoOlderThan — nie obsługiwane dla CSV");
-            return 0;
-        }
-
         List<Station> stations = findActiveStations(StationType.METEO);
         int total = 0;
 
@@ -207,36 +169,18 @@ public class FileRepository implements DataRepository {
 
     @Override
     public void saveHydro(HydroData data) throws PersistenceException {
-        // Wymuszamy spójną nazwę stacji dla danych hydro
-        String correctName = resolveStationName(data.getStationId(), StationType.HYDRO);
-        data.setStationName(correctName);
-
-        if (useJson) jsonWriter.writeHydro(data);
-        else          csvWriter.writeHydro(data);
+        jsonWriter.writeHydro(data);
     }
 
     @Override
     public void saveAllHydro(List<HydroData> dataList) throws PersistenceException {
         if (dataList == null || dataList.isEmpty()) return;
-
-        // Mapujemy poprawne nazwy dla całej listy hydro
-        for (HydroData data : dataList) {
-            String correctName = resolveStationName(data.getStationId(), StationType.HYDRO);
-            data.setStationName(correctName);
-        }
-
-        if (useJson) jsonWriter.writeHydroList(dataList);
-        else          csvWriter.writeHydroList(dataList);
+        jsonWriter.writeHydroList(dataList);
         log.debug("Zapisano {} pomiarów hydro do plików", dataList.size());
     }
 
     @Override
     public List<HydroData> findHydroByStation(String stationId) throws PersistenceException {
-        if (!useJson) {
-            log.warn("findHydroByStation — odczyt z CSV nie jest wspierany, zwracam pustą listę");
-            return Collections.emptyList();
-        }
-
         String stationName = resolveStationName(stationId, StationType.HYDRO);
         List<HydroData> all = jsonWriter.readHydro(stationId, stationName);
         all.sort((a, b) -> {
@@ -267,11 +211,6 @@ public class FileRepository implements DataRepository {
 
     @Override
     public int deleteHydroOlderThan(LocalDateTime olderThan) throws PersistenceException {
-        if (!useJson) {
-            log.warn("deleteHydroOlderThan — nie obsługiwane dla CSV");
-            return 0;
-        }
-
         List<Station> stations = findActiveStations(StationType.HYDRO);
         int total = 0;
 
@@ -293,7 +232,7 @@ public class FileRepository implements DataRepository {
     }
 
     // =========================================================================
-    // OSTRZEŻENIA — zawsze JSON
+    // OSTRZEŻENIA
     // =========================================================================
 
     @Override
@@ -303,14 +242,11 @@ public class FileRepository implements DataRepository {
 
     @Override
     public void saveAllWarnings(List<Warning> warnings) throws PersistenceException {
-        if (useJson) jsonWriter.writeWarnings(warnings);
-        else         csvWriter.writeWarnings(warnings);
+        jsonWriter.writeWarnings(warnings);
     }
 
     @Override
     public List<Warning> findActiveWarnings() throws PersistenceException {
-        if (!useJson) return Collections.emptyList();
-
         List<Warning> today = jsonWriter.readWarnings(
                 java.time.LocalDate.now().toString());
         return today.stream().filter(Warning::isActive).toList();

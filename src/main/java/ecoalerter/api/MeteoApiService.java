@@ -37,9 +37,11 @@ import java.util.Optional;
  * model MeteoData nie zawiera takiego pola.
  *
  * Każdy pomiar ma własny, niezależny znacznik czasu (podobnie jak w danych
- * hydrologicznych). Jako kanoniczny czas całego rekordu przyjmujemy znacznik
- * czasu temperatury powietrza (główny, najczęściej raportowany parametr),
- * z awaryjnym przejściem na inne dostępne znaczniki tego samego rekordu.
+ * hydrologicznych). Jako czas całego rekordu przyjmujemy NAJNOWSZY ze znaczników
+ * dostępnych pól — nie pierwszy z nich — żeby uniknąć sytuacji, w której jedno
+ * pole (np. temperatura) ma wciąż stary znacznik, a inne (np. wiatr) już nowy,
+ * co przy użyciu "pierwszego pola" jako czasu rekordu powodowałoby błędne
+ * odrzucenie nowych danych przez ograniczenie UNIQUE(station_id, timestamp).
  */
 public class MeteoApiService {
 
@@ -200,9 +202,13 @@ public class MeteoApiService {
         data.setWindSpeed(getDouble(obj, "wiatr_srednia_predkosc"));
         data.setPrecipitation(getDouble(obj, "opad_10min"));
 
-        // Znacznik czasu całego rekordu — preferujemy czas pomiaru temperatury
-        // powietrza (główny parametr), z awaryjnym przejściem na inne znaczniki.
-        data.setTimestamp(firstNonNull(tempTime, windTime, precTime));
+        // Znacznik czasu całego rekordu — bierzemy NAJNOWSZY z dostępnych
+        // znaczników (nie pierwszy), żeby uniknąć błędnego odrzucenia przez
+        // UNIQUE(station_id, timestamp): gdyby temperatura miała wciąż stary,
+        // niezmieniony znacznik, a wiatr już nowy, użycie "pierwszego" pola
+        // (temperatury) jako kanonicznego czasu rekordu sprawiłoby, że kolejne
+        // realnie nowe pomiary wiatru byłyby traktowane jako duplikat i pomijane.
+        data.setTimestamp(latestOf(tempTime, windTime, precTime));
 
         return data;
     }
@@ -243,13 +249,19 @@ public class MeteoApiService {
     }
 
     /**
-     * Zwraca pierwszy niepusty znacznik czasu z podanych kandydatów,
-     * albo aktualny czas gdy wszystkie są null.
+     * Zwraca najnowszy (maksymalny) znacznik czasu z podanych kandydatów,
+     * albo aktualny czas gdy wszystkie są null. Użycie maksimum, nie pierwszej
+     * niepustej wartości, gwarantuje że jeśli JAKIEKOLWIEK pole rekordu dostało
+     * nowszy pomiar, cały rekord dostaje nowszy znacznik czasu — co zapobiega
+     * cichemu odrzuceniu nowych danych przez UNIQUE(station_id, timestamp).
      */
-    private LocalDateTime firstNonNull(LocalDateTime... candidates) {
+    private LocalDateTime latestOf(LocalDateTime... candidates) {
+        LocalDateTime latest = null;
         for (LocalDateTime candidate : candidates) {
-            if (candidate != null) return candidate;
+            if (candidate != null && (latest == null || candidate.isAfter(latest))) {
+                latest = candidate;
+            }
         }
-        return LocalDateTime.now();
+        return latest != null ? latest : LocalDateTime.now();
     }
 }

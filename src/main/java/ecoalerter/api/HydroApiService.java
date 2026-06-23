@@ -32,9 +32,11 @@ import java.util.Optional;
  * Uwaga — każdy pomiar ma WŁASNY, niezależny znacznik czasu; mogą się
  * różnić o miesiące (np. stan wody mierzony codziennie, a przepływ raz
  * na kilka miesięcy). Model HydroData ma jedno pole timestamp dla całego
- * rekordu, więc jako wartość kanoniczną przyjmujemy znacznik czasu stanu
- * wody (najważniejszy, najczęściej aktualizowany parametr hydrologiczny),
- * z awaryjnym przejściem na inne dostępne znaczniki gdy stan wody jest null.
+ * rekordu, więc jako jego wartość przyjmujemy NAJNOWSZY ze znaczników
+ * dostępnych pól — nie pierwszy z nich — żeby uniknąć sytuacji, w której
+ * jedno pole (np. stan wody) ma wciąż stary znacznik, a inne (np. przepływ)
+ * już nowy, co przy użyciu "pierwszego pola" jako czasu rekordu powodowałoby
+ * błędne odrzucenie nowych danych przez ograniczenie UNIQUE(station_id, timestamp).
  */
 public class HydroApiService {
 
@@ -222,10 +224,13 @@ public class HydroApiService {
         data.setIcePhenomenon(getInt(obj, "zjawisko_lodowe", 0));
         data.setOvergrowthPhenomenon(getInt(obj, "zjawisko_zarastania", 0));
 
-        // Znacznik czasu całego rekordu — preferujemy czas pomiaru stanu wody
-        // (najważniejszy i najczęściej aktualizowany parametr), z awaryjnym
-        // przejściem na inne dostępne znaczniki czasu tego samego rekordu.
-        data.setTimestamp(firstNonNull(
+        // Znacznik czasu całego rekordu — bierzemy NAJNOWSZY z dostępnych
+        // znaczników (nie pierwszy), żeby uniknąć błędnego odrzucenia przez
+        // UNIQUE(station_id, timestamp): gdyby stan wody miał wciąż stary,
+        // niezmieniony znacznik, a przepływ już nowy, użycie "pierwszego" pola
+        // jako kanonicznego czasu rekordu sprawiłoby, że kolejne realnie nowe
+        // pomiary przepływu byłyby traktowane jako duplikat i pomijane.
+        data.setTimestamp(latestOf(
                 waterLevelTime, waterTempTime, flowTime, iceTime, overgrowthTime));
 
         return data;
@@ -277,14 +282,19 @@ public class HydroApiService {
     }
 
     /**
-     * Zwraca pierwszy niepusty znacznik czasu z podanych kandydatów,
-     * albo aktualny czas gdy wszystkie są null (rekord bez żadnego
-     * poprawnego znacznika czasu — nie powinno się zdarzyć w praktyce).
+     * Zwraca najnowszy (maksymalny) znacznik czasu z podanych kandydatów,
+     * albo aktualny czas gdy wszystkie są null. Użycie maksimum, nie pierwszej
+     * niepustej wartości, gwarantuje że jeśli JAKIEKOLWIEK pole rekordu dostało
+     * nowszy pomiar, cały rekord dostaje nowszy znacznik czasu — co zapobiega
+     * cichemu odrzuceniu nowych danych przez UNIQUE(station_id, timestamp).
      */
-    private LocalDateTime firstNonNull(LocalDateTime... candidates) {
+    private LocalDateTime latestOf(LocalDateTime... candidates) {
+        LocalDateTime latest = null;
         for (LocalDateTime candidate : candidates) {
-            if (candidate != null) return candidate;
+            if (candidate != null && (latest == null || candidate.isAfter(latest))) {
+                latest = candidate;
+            }
         }
-        return LocalDateTime.now();
+        return latest != null ? latest : LocalDateTime.now();
     }
 }

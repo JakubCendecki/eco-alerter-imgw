@@ -2,7 +2,6 @@ package ecoalerter.gui.panels;
 
 import ecoalerter.config.AppConfig;
 import ecoalerter.config.PersistenceMode;
-import ecoalerter.model.WarningLevel;
 import ecoalerter.service.DataCollectionService;
 import ecoalerter.util.AppLogger;
 import org.apache.logging.log4j.Logger;
@@ -18,6 +17,7 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JRadioButton;
+import javax.swing.JSlider;
 import javax.swing.JSpinner;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingWorker;
@@ -30,8 +30,8 @@ import java.awt.FlowLayout;
  * Panel ustawień aplikacji.
  *
  * Sekcje:
- * - Persystencja danych — wybór trybu (Plik / Baza danych) i formatu plikowego
- *   (JSON / CSV), zastosowanie wymaga restartu aplikacji,
+ * - Persystencja danych — wybór trybu (Plik / Baza danych), zastosowanie
+ *   wymaga restartu aplikacji,
  * - Zakres monitorowanych danych (DataTypeConfig — checkboxy), zastosowanie
  *   wymaga restartu aplikacji,
  * - Harmonogram — domyślny interwał odpytywania dla nowych stacji,
@@ -53,9 +53,12 @@ import java.awt.FlowLayout;
  * app.properties wymaga edycji pliku poza aplikacją.
  */
 public class SettingsPanel extends JPanel {
-	private static final long serialVersionUID = -7830820212493657572L;
 
-	private static final Logger log = AppLogger.get(SettingsPanel.class);
+    private static final Logger log = AppLogger.get(SettingsPanel.class);
+
+    /** Zakres slidera interwału domyślnego, w minutach. */
+    private static final int MIN_INTERVAL_MINUTES = 5;
+    private static final int MAX_INTERVAL_MINUTES = 30;
 
     private final AppConfig              config;
     private final DataCollectionService  dataCollectionService;
@@ -63,12 +66,8 @@ public class SettingsPanel extends JPanel {
     // --- Persystencja ---
     private JRadioButton fileModeRadio;
     private JRadioButton dbModeRadio;
-    private JRadioButton jsonFormatRadio;
-    private JRadioButton csvFormatRadio;
 
     // --- Zakres monitorowanych danych ---
-    private JCheckBox meteoEnabledBox;
-    private JCheckBox hydroEnabledBox;
     private JCheckBox temperatureBox;
     private JCheckBox windBox;
     private JCheckBox precipitationBox;
@@ -76,13 +75,11 @@ public class SettingsPanel extends JPanel {
     private JCheckBox waterTemperatureBox;
 
     // --- Harmonogram ---
-    private JSpinner defaultIntervalSpinner;
+    private JSlider  defaultIntervalSlider;
 
     // --- Pozostałe ---
-    private JCheckBox               warningsEnabledBox;
     private JSpinner                apiTimeoutSpinner;
     private JSpinner                apiRetrySpinner;
-    private JComboBox<WarningLevel> warningLevelCombo;
     private JComboBox<String>       logLevelCombo;
     private JSpinner                cleanupDaysSpinner;
 
@@ -108,11 +105,11 @@ public class SettingsPanel extends JPanel {
         add(Box.createVerticalStrut(10));
         add(buildApiSection());
         add(Box.createVerticalStrut(10));
-        add(buildWarningsSection());
-        add(Box.createVerticalStrut(10));
         add(buildLoggingSection());
         add(Box.createVerticalStrut(10));
         add(buildCleanupSection());
+        add(Box.createVerticalStrut(10));
+        add(buildResetSection());
         add(Box.createVerticalGlue());
 
         loadCurrentValues();
@@ -138,28 +135,15 @@ public class SettingsPanel extends JPanel {
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
 
         ButtonGroup modeGroup = new ButtonGroup();
-        fileModeRadio = new JRadioButton("Plik");
+        fileModeRadio = new JRadioButton("Plik (JSON)");
         dbModeRadio   = new JRadioButton("Baza danych (SQLite)");
         modeGroup.add(fileModeRadio);
         modeGroup.add(dbModeRadio);
-        fileModeRadio.addActionListener(e -> updateFormatRadiosEnabled());
-        dbModeRadio.addActionListener(e -> updateFormatRadiosEnabled());
-
-        ButtonGroup formatGroup = new ButtonGroup();
-        jsonFormatRadio = new JRadioButton("JSON");
-        csvFormatRadio  = new JRadioButton("CSV");
-        formatGroup.add(jsonFormatRadio);
-        formatGroup.add(csvFormatRadio);
 
         JPanel modeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 2));
         modeRow.add(new JLabel("Tryb zapisu:"));
         modeRow.add(fileModeRadio);
         modeRow.add(dbModeRadio);
-
-        JPanel formatRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 2));
-        formatRow.add(new JLabel("Format pliku:"));
-        formatRow.add(jsonFormatRadio);
-        formatRow.add(csvFormatRadio);
 
         JButton applyButton = new JButton("Zastosuj");
         applyButton.addActionListener(e -> onApplyPersistence());
@@ -173,29 +157,17 @@ public class SettingsPanel extends JPanel {
         buttonRow.add(note);
 
         content.add(modeRow);
-        content.add(formatRow);
         content.add(buttonRow);
 
         return wrapTitled("Persystencja danych", content);
     }
 
-    private void updateFormatRadiosEnabled() {
-        boolean fileSelected = fileModeRadio.isSelected();
-        jsonFormatRadio.setEnabled(fileSelected);
-        csvFormatRadio.setEnabled(fileSelected);
-    }
-
     private void onApplyPersistence() {
-        PersistenceMode chosenMode   = fileModeRadio.isSelected()
+        PersistenceMode chosenMode  = fileModeRadio.isSelected()
                 ? PersistenceMode.FILE : PersistenceMode.DATABASE;
-        String          chosenFormat = jsonFormatRadio.isSelected() ? "JSON" : "CSV";
+        PersistenceMode currentMode = config.getPersistenceMode();
 
-        PersistenceMode currentMode   = config.getPersistenceMode();
-        String          currentFormat = config.getStorageFileFormat();
-
-        boolean unchanged = chosenMode == currentMode
-                && (chosenMode != PersistenceMode.FILE || chosenFormat.equals(currentFormat));
-        if (unchanged) {
+        if (chosenMode == currentMode) {
             JOptionPane.showMessageDialog(this, "Brak zmian do zastosowania.",
                     "Informacja", JOptionPane.INFORMATION_MESSAGE);
             return;
@@ -204,9 +176,6 @@ public class SettingsPanel extends JPanel {
         confirmRestartOrRevert(
                 () -> {
                     config.setRaw("persistence.mode", chosenMode.name());
-                    if (chosenMode == PersistenceMode.FILE) {
-                        config.setRaw("storage.file.format", chosenFormat);
-                    }
                     AppLogger.logConfigChange("persistence.mode", currentMode.name(), chosenMode.name());
                 },
                 this::loadPersistenceRadios
@@ -217,12 +186,6 @@ public class SettingsPanel extends JPanel {
         PersistenceMode mode = config.getPersistenceMode();
         fileModeRadio.setSelected(mode == PersistenceMode.FILE);
         dbModeRadio.setSelected(mode == PersistenceMode.DATABASE);
-
-        String format = config.getStorageFileFormat();
-        jsonFormatRadio.setSelected("JSON".equalsIgnoreCase(format));
-        csvFormatRadio.setSelected("CSV".equalsIgnoreCase(format));
-
-        updateFormatRadiosEnabled();
     }
 
     // -------------------------------------------------------------------------
@@ -235,16 +198,14 @@ public class SettingsPanel extends JPanel {
 
         JPanel grid = new JPanel(new GridLayout(0, 2, 12, 4));
 
-        meteoEnabledBox      = plainCheckbox("Dane meteo (ogólnie)");
-        hydroEnabledBox      = plainCheckbox("Dane hydro (ogólnie)");
         temperatureBox       = plainCheckbox("Temperatura");
         windBox              = plainCheckbox("Prędkość wiatru");
         precipitationBox     = plainCheckbox("Opady");
         waterLevelBox        = plainCheckbox("Stan wody");
         waterTemperatureBox  = plainCheckbox("Temperatura wody");
 
-        grid.add(meteoEnabledBox);
-        grid.add(hydroEnabledBox);
+        grid.add(boldLabel("Dane meteo"));
+        grid.add(boldLabel("Dane hydro"));
         grid.add(temperatureBox);
         grid.add(waterLevelBox);
         grid.add(windBox);
@@ -272,8 +233,12 @@ public class SettingsPanel extends JPanel {
     private void onApplyDataTypeConfig() {
         confirmRestartOrRevert(
                 () -> {
-                    config.setRaw("data.meteo.enabled", String.valueOf(meteoEnabledBox.isSelected()));
-                    config.setRaw("data.hydro.enabled", String.valueOf(hydroEnabledBox.isSelected()));
+                    // Brak już osobnych przełączników "ogólnie" — kategoria jest
+                    // efektywnie włączona, jeśli przynajmniej jedno jej pole jest
+                    // zaznaczone; odznaczenie wszystkich pól danej kategorii daje
+                    // ten sam efekt co dawne wyłączenie "ogólnie".
+                    config.setRaw("data.meteo.enabled", "true");
+                    config.setRaw("data.hydro.enabled", "true");
                     config.setRaw("data.meteo.temperature", String.valueOf(temperatureBox.isSelected()));
                     config.setRaw("data.meteo.wind", String.valueOf(windBox.isSelected()));
                     config.setRaw("data.meteo.precipitation", String.valueOf(precipitationBox.isSelected()));
@@ -287,8 +252,6 @@ public class SettingsPanel extends JPanel {
 
     private void loadDataTypeCheckboxes() {
         var dataTypeConfig = config.getDataTypeConfig();
-        meteoEnabledBox.setSelected(dataTypeConfig.isMeteoEnabled());
-        hydroEnabledBox.setSelected(dataTypeConfig.isHydroEnabled());
         temperatureBox.setSelected(dataTypeConfig.isTemperatureEnabled());
         windBox.setSelected(dataTypeConfig.isWindEnabled());
         precipitationBox.setSelected(dataTypeConfig.isPrecipitationEnabled());
@@ -301,33 +264,48 @@ public class SettingsPanel extends JPanel {
     // -------------------------------------------------------------------------
 
     private JPanel buildSchedulerSection() {
-        JPanel panel = titledPanel("Harmonogram", new FlowLayout(FlowLayout.LEFT, 8, 4));
+        JPanel content = new JPanel(new java.awt.BorderLayout(8, 0));
 
-        defaultIntervalSpinner = new JSpinner(new SpinnerNumberModel(
-                config.getSchedulerDefaultIntervalSeconds(), 60, 86_400, 30));
+        int currentMinutes = clampToMinuteSlider(config.getSchedulerDefaultIntervalSeconds() / 60);
+        defaultIntervalSlider = new JSlider(MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES, currentMinutes);
+        defaultIntervalSlider.setMajorTickSpacing(5);
+        defaultIntervalSlider.setSnapToTicks(true);
+        defaultIntervalSlider.setPaintTicks(true);
+        defaultIntervalSlider.setPaintLabels(true); // minimum=5 i majorTickSpacing=5 dają etykiety 5,10,...,30 automatycznie
+        defaultIntervalSlider.setPreferredSize(new java.awt.Dimension(320, 45));
 
         JButton applyButton = new JButton("Zastosuj");
         applyButton.addActionListener(e -> onApplyDefaultInterval());
 
-        panel.add(new JLabel("Domyślny interwał dla nowych stacji (s):"));
-        panel.add(defaultIntervalSpinner);
-        panel.add(applyButton);
+        content.add(new JLabel("Domyślny interwał dla nowych stacji (min):"), java.awt.BorderLayout.WEST);
+        content.add(defaultIntervalSlider, java.awt.BorderLayout.CENTER);
+        content.add(applyButton, java.awt.BorderLayout.EAST);
 
-        return panel;
+        return wrapTitled("Harmonogram", content);
     }
 
     private void onApplyDefaultInterval() {
-        int    newDefault = (Integer) defaultIntervalSpinner.getValue();
-        String oldValue    = config.getRaw("scheduler.default.interval.seconds");
+        int    newMinutes = defaultIntervalSlider.getValue();
+        int    newSeconds = newMinutes * 60;
+        String oldValue   = config.getRaw("scheduler.default.interval.seconds");
 
-        config.setRaw("scheduler.default.interval.seconds", String.valueOf(newDefault));
+        config.setRaw("scheduler.default.interval.seconds", String.valueOf(newSeconds));
         AppLogger.logConfigChange("scheduler.default.interval.seconds", oldValue,
-                String.valueOf(newDefault));
+                String.valueOf(newSeconds));
 
         JOptionPane.showMessageDialog(this,
-                "Domyślny interwał ustawiony na " + newDefault + " s.\n" +
+                "Domyślny interwał ustawiony na " + newMinutes + " min.\n" +
                 "Obowiązuje od razu dla nowo planowanych stacji.",
                 "Zastosowano", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    /**
+     * Ogranicza wartość w minutach do zakresu obsługiwanego przez slider
+     * (1-60 min). Istniejące interwały zapisane przed wprowadzeniem slidera
+     * mogły przekraczać tę godzinę — są tu po prostu przycinane do nowego limitu.
+     */
+    private int clampToMinuteSlider(int minutes) {
+        return Math.max(MIN_INTERVAL_MINUTES, Math.min(MAX_INTERVAL_MINUTES, minutes));
     }
 
     // -------------------------------------------------------------------------
@@ -335,52 +313,54 @@ public class SettingsPanel extends JPanel {
     // -------------------------------------------------------------------------
 
     private JPanel buildApiSection() {
-        JPanel panel = titledPanel("Komunikacja z API IMGW", new GridLayout(2, 2, 8, 4));
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+
+        JPanel grid = new JPanel(new GridLayout(2, 2, 8, 4));
 
         apiTimeoutSpinner = new JSpinner(new SpinnerNumberModel(
                 config.getApiTimeoutSeconds(), 1, 120, 1));
-        apiTimeoutSpinner.addChangeListener(e ->
-                config.setRaw("api.timeout.seconds", apiTimeoutSpinner.getValue().toString()));
-
         apiRetrySpinner = new JSpinner(new SpinnerNumberModel(
                 config.getApiRetryCount(), 0, 10, 1));
-        apiRetrySpinner.addChangeListener(e ->
-                config.setRaw("api.retry.count", apiRetrySpinner.getValue().toString()));
 
-        panel.add(new JLabel("Timeout żądania (s):"));
-        panel.add(apiTimeoutSpinner);
-        panel.add(new JLabel("Liczba ponowień:"));
-        panel.add(apiRetrySpinner);
+        grid.add(new JLabel("Timeout żądania (s):"));
+        grid.add(apiTimeoutSpinner);
+        grid.add(new JLabel("Liczba ponowień:"));
+        grid.add(apiRetrySpinner);
 
-        return panel;
+        JButton applyButton = new JButton("Zastosuj");
+        applyButton.addActionListener(e -> onApplyApiSettings());
+
+        JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 2));
+        buttonRow.add(applyButton);
+
+        content.add(grid);
+        content.add(buttonRow);
+
+        return wrapTitled("Komunikacja z API IMGW", content);
+    }
+
+    private void onApplyApiSettings() {
+        int newTimeout = (Integer) apiTimeoutSpinner.getValue();
+        int newRetries = (Integer) apiRetrySpinner.getValue();
+
+        String oldTimeout = config.getRaw("api.timeout.seconds");
+        String oldRetries = config.getRaw("api.retry.count");
+
+        config.setRaw("api.timeout.seconds", String.valueOf(newTimeout));
+        config.setRaw("api.retry.count", String.valueOf(newRetries));
+
+        AppLogger.logConfigChange("api.timeout.seconds", oldTimeout, String.valueOf(newTimeout));
+        AppLogger.logConfigChange("api.retry.count", oldRetries, String.valueOf(newRetries));
+
+        JOptionPane.showMessageDialog(this,
+                "Ustawienia API zapisane (timeout: " + newTimeout + " s, ponowienia: " + newRetries + ").",
+                "Zastosowano", JOptionPane.INFORMATION_MESSAGE);
     }
 
     // -------------------------------------------------------------------------
     // Sekcja: filtr ostrzeżeń (zastosowanie natychmiastowe)
     // -------------------------------------------------------------------------
-
-    private JPanel buildWarningsSection() {
-        JPanel panel = titledPanel("Ostrzeżenia", new GridLayout(2, 2, 8, 4));
-
-        warningsEnabledBox = plainCheckbox("Pobieraj ostrzeżenia z IMGW");
-        warningsEnabledBox.addActionListener(e ->
-                config.setRaw("warnings.enabled", String.valueOf(warningsEnabledBox.isSelected())));
-
-        warningLevelCombo = new JComboBox<>(WarningLevel.values());
-        warningLevelCombo.addActionListener(e -> {
-            WarningLevel selected = (WarningLevel) warningLevelCombo.getSelectedItem();
-            if (selected != null) {
-                config.setRaw("warnings.filter.level", selected.name());
-            }
-        });
-
-        panel.add(warningsEnabledBox);
-        panel.add(new JLabel());
-        panel.add(new JLabel("Minimalny poziom do wyświetlenia:"));
-        panel.add(warningLevelCombo);
-
-        return panel;
-    }
 
     // -------------------------------------------------------------------------
     // Sekcja: logowanie (zastosowanie natychmiastowe)
@@ -461,15 +441,60 @@ public class SettingsPanel extends JPanel {
     }
 
     // -------------------------------------------------------------------------
+    // Sekcja: reset ustawień
+    // -------------------------------------------------------------------------
+
+    private JPanel buildResetSection() {
+        JPanel content = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 4));
+
+        JButton resetButton = new JButton("Resetuj ustawienia");
+        resetButton.addActionListener(e -> onResetSettings());
+
+        JLabel note = new JLabel("Przywraca domyślne ustawienia i zamyka aplikację — wymaga ponownego uruchomienia.");
+        note.setFont(note.getFont().deriveFont(Font.ITALIC, 11f));
+        note.setForeground(java.awt.Color.GRAY);
+
+        content.add(resetButton);
+        content.add(note);
+
+        return wrapTitled("Reset", content);
+    }
+
+    private void onResetSettings() {
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "Reset przywróci wszystkie ustawienia do wartości domyślnych\n" +
+                "i WYMAGA natychmiastowego zamknięcia aplikacji.\n" +
+                "Trzeba będzie uruchomić ją ponownie ręcznie.\n\n" +
+                "Czy kontynuować?",
+                "Reset ustawień — wymagany restart aplikacji",
+                JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (confirm != JOptionPane.YES_OPTION) return;
+
+        config.resetToDefaults();
+
+        if (onRestartRequested != null) {
+            onRestartRequested.run();
+        } else {
+            log.warn("Brak zarejestrowanej akcji restartu — ustawienia zresetowane, " +
+                     "ale aplikacja nie zostanie zamknięta automatycznie");
+            loadCurrentValues();
+            JOptionPane.showMessageDialog(this,
+                    "Ustawienia zresetowane. Uruchom aplikację ponownie, aby zastosować zmiany.",
+                    "Zresetowano", JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Wczytanie wartości początkowych z konfiguracji
     // -------------------------------------------------------------------------
 
     private void loadCurrentValues() {
         loadPersistenceRadios();
         loadDataTypeCheckboxes();
-        warningsEnabledBox.setSelected(config.isWarningsEnabled());
-        warningLevelCombo.setSelectedItem(config.getWarningsFilterLevel());
         logLevelCombo.setSelectedItem(config.getLogLevel());
+        apiTimeoutSpinner.setValue(config.getApiTimeoutSeconds());
+        apiRetrySpinner.setValue(config.getApiRetryCount());
+        defaultIntervalSlider.setValue(clampToMinuteSlider(config.getSchedulerDefaultIntervalSeconds() / 60));
     }
 
     // -------------------------------------------------------------------------
@@ -534,6 +559,16 @@ public class SettingsPanel extends JPanel {
         wrapper.setBorder(border);
 
         return wrapper;
+    }
+
+    /**
+     * Tworzy pogrubioną etykietę używaną jako nagłówek sekcji checkboxów
+     * (np. "Dane meteo" nad polami temperatury/wiatru/opadów).
+     */
+    private JLabel boldLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setFont(label.getFont().deriveFont(Font.BOLD));
+        return label;
     }
 
     /**

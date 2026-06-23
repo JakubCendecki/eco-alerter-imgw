@@ -13,11 +13,16 @@ import org.apache.logging.log4j.Logger;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JToolBar;
 import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.GridBagLayout;
 import java.util.List;
 
 /**
@@ -32,15 +37,18 @@ import java.util.List;
  * aktualizuje kolumnę statusu w tabeli po zdarzeniach DATA_UPDATED/STATION_ERROR.
  */
 public class StationManagerPanel extends JPanel implements NotificationService.AppEventListener {
-	private static final long serialVersionUID = -129460458602615192L;
 
-	private static final Logger log = AppLogger.get(StationManagerPanel.class);
+    private static final Logger log = AppLogger.get(StationManagerPanel.class);
+
+    private static final String CARD_TABLE = "table";
+    private static final String CARD_EMPTY = "empty";
 
     private final StationService          stationService;
     private final DataCollectionService    dataCollectionService;
     private final NotificationService      notificationService;
 
     private final StationTable stationTable;
+    private final JPanel       centerPanel;
     private final JButton      removeButton;
     private final JButton      toggleActiveButton;
     private final JButton      editButton;
@@ -91,11 +99,40 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         toolBar.add(refreshNowButton);
 
         add(toolBar, BorderLayout.NORTH);
-        add(stationTable, BorderLayout.CENTER);
+
+        this.centerPanel = new JPanel(new CardLayout());
+        centerPanel.add(stationTable, CARD_TABLE);
+        centerPanel.add(buildEmptyStatePanel(), CARD_EMPTY);
+        add(centerPanel, BorderLayout.CENTER);
 
         notificationService.addListener(this);
         updateButtonStates();
+        showEmptyState(); // stan początkowy, do momentu pierwszego reloadStations()
         reloadStations();
+    }
+
+    /**
+     * Budowa panelu wyświetlanego, gdy nie istnieje żadna dodana stacja —
+     * zamiast pustej tabeli z nagłówkami, samo centrowane Microcopy.
+     */
+    private JPanel buildEmptyStatePanel() {
+        JPanel panel = new JPanel(new GridBagLayout());
+
+        JLabel label = new JLabel(
+                "Brak dodanych stacji. Kliknij \u201eDodaj stację...\u201d, aby zacząć monitorowanie.");
+        label.setFont(label.getFont().deriveFont(Font.PLAIN, 14f));
+        label.setForeground(Color.GRAY);
+
+        panel.add(label); // GridBagLayout bez ograniczeń centruje pojedynczy komponent
+        return panel;
+    }
+
+    private void showEmptyState() {
+        ((CardLayout) centerPanel.getLayout()).show(centerPanel, CARD_EMPTY);
+    }
+
+    private void showTableState() {
+        ((CardLayout) centerPanel.getLayout()).show(centerPanel, CARD_TABLE);
     }
 
     // -------------------------------------------------------------------------
@@ -117,7 +154,13 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
             @Override
             protected void done() {
                 try {
-                    stationTable.setStations(get());
+                    List<Station> stations = get();
+                    stationTable.setStations(stations);
+                    if (stations.isEmpty()) {
+                        showEmptyState();
+                    } else {
+                        showTableState();
+                    }
                 } catch (Exception e) {
                     showError("Nie udało się wczytać listy stacji", e);
                 }

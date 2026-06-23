@@ -15,17 +15,18 @@ import ecoalerter.util.AppLogger;
 import ecoalerter.util.IconLoader;
 import org.apache.logging.log4j.Logger;
 
+import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
-import javax.swing.JMenu;
-import javax.swing.JMenuBar;
-import javax.swing.JMenuItem;
+import javax.swing.JLabel;
 import javax.swing.JOptionPane;
+import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
 import javax.swing.SwingWorker;
 import javax.swing.Timer;
 import javax.swing.WindowConstants;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.time.LocalDateTime;
@@ -45,16 +46,18 @@ import java.util.List;
  * kolejności, a następnie kończy aplikację.
  */
 public class MainWindow extends JFrame implements NotificationService.AppEventListener {
-	private static final long serialVersionUID = 547929200878126423L;
 
-	private static final Logger log = AppLogger.get(MainWindow.class);
+    private static final Logger log = AppLogger.get(MainWindow.class);
 
     private static final String APP_TITLE   = "EcoAlerter IMGW";
     private static final int    STATUS_REFRESH_INTERVAL_MS = 5_000;
 
     private final StationService         stationService;
+    private final DataCollectionService  dataCollectionService;
+    private final WarningService         warningService;
     private final NotificationService    notificationService;
     private final TaskSchedulerManager   scheduler;
+    private final AppConfig              config;
 
     private final StatusBar             statusBar;
     private final StationManagerPanel   stationManagerPanel;
@@ -78,8 +81,11 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
         super(APP_TITLE);
 
         this.stationService        = stationService;
+        this.dataCollectionService = dataCollectionService;
+        this.warningService        = warningService;
         this.notificationService   = notificationService;
         this.scheduler              = scheduler;
+        this.config                 = config;
 
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         setMinimumSize(new Dimension(1024, 700));
@@ -88,19 +94,24 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
         this.statusBar            = new StatusBar();
         this.stationManagerPanel  = new StationManagerPanel(
                 stationService, dataCollectionService, notificationService);
-        this.dataViewPanel        = new DataViewPanel(stationService, dataCollectionService, notificationService);
+        this.dataViewPanel        = new DataViewPanel(stationService, dataCollectionService, notificationService, config);
         this.warningPanel         = new WarningPanel(warningService, notificationService);
         this.settingsPanel        = new SettingsPanel(config, dataCollectionService);
 
         settingsPanel.setOnRestartRequested(this::handleWindowClosing);
 
-        setJMenuBar(buildMenuBar());
-
         JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab("Stacje",        IconLoader.loadScaled("station.png", 18), stationManagerPanel);
-        tabs.addTab("Dane",          dataViewPanel);
-        tabs.addTab("Ostrzeżenia",   IconLoader.loadScaled("warning.png", 18), warningPanel);
-        tabs.addTab("Ustawienia",    settingsPanel);
+        tabs.addTab(null, stationManagerPanel);
+        tabs.setTabComponentAt(0, buildTabComponent("Stacje", IconLoader.loadScaled("station.png", 18)));
+
+        tabs.addTab(null, dataViewPanel);
+        tabs.setTabComponentAt(1, buildTabComponent("Dane", IconLoader.loadScaled("data.png", 18)));
+
+        tabs.addTab(null, warningPanel);
+        tabs.setTabComponentAt(2, buildTabComponent("Ostrzeżenia", IconLoader.loadScaled("warning.png", 18)));
+
+        tabs.addTab(null, settingsPanel);
+        tabs.setTabComponentAt(3, buildTabComponent("Ustawienia", IconLoader.loadScaled("settings.png", 18)));
 
         add(tabs, java.awt.BorderLayout.CENTER);
         add(statusBar, java.awt.BorderLayout.SOUTH);
@@ -123,10 +134,6 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
     }
 
     // -------------------------------------------------------------------------
-    // Budowa menu
-    // -------------------------------------------------------------------------
-
-    // -------------------------------------------------------------------------
     // Ikona aplikacji
     // -------------------------------------------------------------------------
 
@@ -142,33 +149,30 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
         }
     }
 
-    private JMenuBar buildMenuBar() {
-        JMenuBar menuBar = new JMenuBar();
+    // -------------------------------------------------------------------------
+    // Komponenty zakładek (ikona + tekst z większym odstępem niż domyślnie)
+    // -------------------------------------------------------------------------
 
-        JMenu fileMenu = new JMenu("Plik");
-        JMenuItem exitItem = new JMenuItem("Wyjście");
-        exitItem.addActionListener(e -> handleWindowClosing());
-        fileMenu.add(exitItem);
+    /**
+     * Buduje niestandardowy komponent zakładki z ikoną i tekstem rozdzielonymi
+     * widocznym odstępem. Domyślne renderowanie JTabbedPane.addTab(title, icon, ...)
+     * sklejało ikonę z tekstem bardzo blisko — własny komponent z FlowLayout
+     * daje pełną kontrolę nad odstępem (12px).
+     *
+     * @param title tytuł zakładki
+     * @param icon  ikona zakładki; null jest dozwolone — wtedy widoczny jest tylko tekst
+     * @return panel do ustawienia przez tabs.setTabComponentAt(...)
+     */
+    private JPanel buildTabComponent(String title, Icon icon) {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 0));
+        panel.setOpaque(false);
 
-        JMenu helpMenu = new JMenu("Pomoc");
-        JMenuItem aboutItem = new JMenuItem("O programie");
-        aboutItem.addActionListener(e -> showAboutDialog());
-        helpMenu.add(aboutItem);
+        if (icon != null) {
+            panel.add(new JLabel(icon));
+        }
+        panel.add(new JLabel(title));
 
-        menuBar.add(fileMenu);
-        menuBar.add(helpMenu);
-        return menuBar;
-    }
-
-    private void showAboutDialog() {
-        ImageIcon icon = IconLoader.loadScaled("app-icon.png", 48);
-
-        JOptionPane.showMessageDialog(this,
-                APP_TITLE + "\n\n" +
-                "System monitorowania i rejestracji danych środowiskowych\n" +
-                "oparty na publicznym API IMGW-PIB.\n\n" +
-                "Aktywnych zadań schedulera: " + scheduler.getActiveTaskCount(),
-                "O programie", JOptionPane.INFORMATION_MESSAGE, icon);
+        return panel;
     }
 
     // -------------------------------------------------------------------------
@@ -235,7 +239,6 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
             case STATION_ERROR -> refreshStatusBarCounts();
             case WARNINGS_REFRESHED -> updateWarningSummaryFromEvent(event);
             case WARNING_DETECTED -> { /* obsłużone już przez WarningPanel i AlertBadge */ }
-            default -> throw new IllegalArgumentException("Unexpected value: " + event.getType());
         }
     }
 

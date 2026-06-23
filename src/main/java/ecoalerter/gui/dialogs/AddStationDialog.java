@@ -11,9 +11,8 @@ import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JSpinner;
+import javax.swing.JSlider;
 import javax.swing.JTextField;
-import javax.swing.SpinnerNumberModel;
 import javax.swing.WindowConstants;
 import java.awt.BorderLayout;
 import java.awt.Component;
@@ -36,19 +35,23 @@ import java.util.Optional;
  * Walidacja przed potwierdzeniem:
  * - ID stacji nie może być puste (tylko tryb dodawania),
  * - Nazwa nie może być pusta,
- * - Interwał musi być co najmniej 60 sekund.
+ * - Interwał wybierany jest slajderem w zakresie 1-60 minut (przeliczany
+ *   na sekundy przy zapisie, bo Station.intervalSeconds operuje w sekundach).
  *
  * Dialog nie wykonuje żadnej komunikacji z API ani repozytorium —
  * zwraca jedynie zbudowany obiekt Station, a zapis wykonuje wywołujący panel
  * przez StationService.addStation() lub StationService.editStation().
  */
 public class AddStationDialog extends JDialog {
-	private static final long serialVersionUID = -2753729171890014580L;
-	
-	private final JTextField        idField;
+
+    private static final int MIN_INTERVAL_MINUTES = 5;
+    private static final int MAX_INTERVAL_MINUTES = 30;
+    private static final int DEFAULT_INTERVAL_MINUTES = 5;
+
+    private final JTextField        idField;
     private final JTextField        nameField;
     private final JComboBox<StationType> typeCombo;
-    private final JSpinner          intervalSpinner;
+    private final JSlider           intervalSlider;
     private final JCheckBox         activeCheckBox;
 
     private Station result;
@@ -66,15 +69,19 @@ public class AddStationDialog extends JDialog {
         idField         = new JTextField(15);
         nameField       = new JTextField(20);
         typeCombo       = new JComboBox<>(StationType.values());
-        intervalSpinner = new JSpinner(new SpinnerNumberModel(300, 60, 86_400, 60));
+        intervalSlider  = buildIntervalSlider();
         activeCheckBox  = new JCheckBox("Aktywna", true);
 
         if (editMode && existing != null) {
             idField.setText(existing.getId());
             nameField.setText(existing.getName());
             typeCombo.setSelectedItem(existing.getType());
-            intervalSpinner.setValue(
-                    existing.getIntervalSeconds() > 0 ? existing.getIntervalSeconds() : 300);
+
+            int existingMinutes = existing.getIntervalSeconds() > 0
+                    ? existing.getIntervalSeconds() / 60
+                    : DEFAULT_INTERVAL_MINUTES;
+            intervalSlider.setValue(clampToSliderRange(existingMinutes));
+
             activeCheckBox.setSelected(existing.isActive());
 
             // ID i typ są częścią identyfikatora rekordu — blokujemy edycję.
@@ -88,7 +95,7 @@ public class AddStationDialog extends JDialog {
         add(buildFormPanel(editMode), BorderLayout.CENTER);
         add(buildButtonPanel(editMode), BorderLayout.SOUTH);
 
-        setMinimumSize(new Dimension(380, 250));
+        setMinimumSize(new Dimension(420, 280));
         pack();
         setLocationRelativeTo(owner);
     }
@@ -96,6 +103,21 @@ public class AddStationDialog extends JDialog {
     // -------------------------------------------------------------------------
     // Budowanie UI
     // -------------------------------------------------------------------------
+
+    private JSlider buildIntervalSlider() {
+        JSlider slider = new JSlider(MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES, DEFAULT_INTERVAL_MINUTES);
+        slider.setMinorTickSpacing(1);
+        slider.setMajorTickSpacing(5);
+        slider.setSnapToTicks(true);
+        slider.setPaintTicks(true);
+        slider.setPaintLabels(true); // minimum=5 i majorTickSpacing=5 dają etykiety 5,10,15,20,25,30 automatycznie
+        slider.setPreferredSize(new Dimension(260, 45));
+        return slider;
+    }
+
+    private int clampToSliderRange(int minutes) {
+        return Math.max(MIN_INTERVAL_MINUTES, Math.min(MAX_INTERVAL_MINUTES, minutes));
+    }
 
     private JPanel buildFormPanel(boolean editMode) {
         JPanel panel = new JPanel(new GridBagLayout());
@@ -108,7 +130,7 @@ public class AddStationDialog extends JDialog {
         addRow(panel, gbc, 0, "ID stacji (IMGW):", idField);
         addRow(panel, gbc, 1, "Nazwa:",            nameField);
         addRow(panel, gbc, 2, "Typ:",               typeCombo);
-        addRow(panel, gbc, 3, "Interwał (s):",      intervalSpinner);
+        addRow(panel, gbc, 3, "Interwał (min):",    intervalSlider);
 
         gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2;
         panel.add(activeCheckBox, gbc);
@@ -173,7 +195,7 @@ public class AddStationDialog extends JDialog {
         }
 
         StationType type     = (StationType) typeCombo.getSelectedItem();
-        int         interval = (Integer) intervalSpinner.getValue();
+        int         interval = intervalSlider.getValue() * 60; // minuty -> sekundy
         boolean     active   = activeCheckBox.isSelected();
 
         this.result    = new Station(id, name, type, active, interval);

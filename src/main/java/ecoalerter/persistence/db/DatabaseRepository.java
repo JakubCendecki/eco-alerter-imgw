@@ -473,12 +473,13 @@ public class DatabaseRepository implements DataRepository {
         String sql = """
                 DELETE FROM warnings
                 WHERE valid_until IS NOT NULL
-                  AND valid_until <= strftime('%Y-%m-%d %H:%M:%S', 'now')
+                  AND valid_until <= ?
                 """;
 
         try (Connection conn = pool.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
+            ps.setString(1, DateTimeUtil.toDbString(LocalDateTime.now()));
             int deleted = ps.executeUpdate();
             if (deleted > 0) log.info("Usunięto {} wygasłych ostrzeżeń", deleted);
             return deleted;

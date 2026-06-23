@@ -55,7 +55,21 @@ public class DataCollectionService {
         this.repository     = repository;
         this.dataTypeConfig = dataTypeConfig;
     }
-    
+
+    /**
+     * Zwraca konfigurację zakresu zbieranych danych używaną przez ten serwis
+     * (i przez FetchTask w schedulerze — ten sam obiekt). Używane przez GUI
+     * (DataViewPanel) do pokazywania tylko tych kolumn, które faktycznie
+     * są zbierane — pole wyłączone w ustawieniach nigdy nie ma wartości
+     * w zapisanych danych, więc pokazywanie dla niego kolumny z samymi "—"
+     * byłoby mylące.
+     *
+     * @return konfiguracja zakresu danych aktywna w tej sesji aplikacji
+     */
+    public DataTypeConfig getDataTypeConfig() {
+        return dataTypeConfig;
+    }
+
     // -------------------------------------------------------------------------
     // Walidacja istnienia stacji w API (dla GUI — przed dodaniem nowej stacji)
     // -------------------------------------------------------------------------
@@ -83,8 +97,7 @@ public class DataCollectionService {
         log.debug("Weryfikacja istnienia stacji {} [{}]: {}", stationId, type, exists);
         return exists;
     }
-    
-    
+
     // -------------------------------------------------------------------------
     // Manualne pobieranie — dla GUI ("Odśwież teraz")
     // -------------------------------------------------------------------------

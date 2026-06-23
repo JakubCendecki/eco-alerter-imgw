@@ -1,15 +1,11 @@
 package ecoalerter.persistence.file;
 
-import ecoalerter.config.AppConfig;
 import ecoalerter.model.*;
 import ecoalerter.persistence.PersistenceException;
 import ecoalerter.util.PathResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -17,20 +13,15 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.when;
 
 /**
- * Testy integracyjne FileRepository w trybie JSON.
+ * Testy integracyjne FileRepository (format JSON — jedyny obsługiwany format plikowy).
  * Katalog danych tworzony jest w tymczasowym folderze @TempDir.
  */
-@ExtendWith(MockitoExtension.class)
 class FileRepositoryTest {
 
     @TempDir
     Path tempDir;
-
-    @Mock
-    AppConfig mockConfig;
 
     private FileRepository repo;
 
@@ -40,14 +31,12 @@ class FileRepositoryTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        when(mockConfig.getStorageFileFormat()).thenReturn("JSON");
-
         PathResolver resolver = new PathResolver(
                 tempDir.resolve("data").toString(),
                 tempDir.resolve("logs").toString()
         );
         resolver.createRequiredDirectories();
-        repo = new FileRepository(mockConfig, resolver);
+        repo = new FileRepository(resolver);
     }
 
     // =========================================================================

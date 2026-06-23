@@ -6,6 +6,7 @@ import ecoalerter.model.WarningLevel;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -14,48 +15,69 @@ import java.util.Properties;
 /**
  * Centralny punkt dostępu do konfiguracji aplikacji.
  *
- * <p>Ładuje {@code app.properties} w następującej kolejności priorytetów:
- * <ol>
- *   <li>Ścieżka podana przez argument {@code --config /ścieżka/do/pliku}</li>
- *   <li>Plik {@code app.properties} w katalogu roboczym aplikacji</li>
- *   <li>Wbudowane wartości domyślne z {@code resources/app.properties}</li>
- * </ol>
+ * Ładuje app.properties w następującej kolejności priorytetów:
+ * 1. Ścieżka podana przez argument --config /ścieżka/do/pliku
+ * 2. Plik src/main/resources/user/app.properties (zapisywalna kopia z bieżącymi
+ *    ustawieniami — tworzona automatycznie przy pierwszym zapisie)
+ * 3. Wbudowane wartości domyślne z resources/app.properties na classpath
  *
- * <p>Singleton — jeden egzemplarz na aplikację, tworzony przez {@link #load()}.
+ * Bundlowany resources/app.properties (na classpath, w katalogu głównym
+ * src/main/resources) NIE jest nigdy modyfikowany przez aplikację — pełni
+ * rolę stałego "backupu"/fabrycznych ustawień, do których można zawsze
+ * wrócić. Wszystkie realne zmiany z GUI trafiają do oddzielnego pliku
+ * w podkatalogu user/, fizycznie odseparowanego od oryginału.
  *
- * <p>Przykład użycia:
- * <pre>
- *     AppConfig config = AppConfig.load();
- *     // lub z niestandardową ścieżką:
- *     AppConfig config = AppConfig.load(Paths.get("/etc/ecoalerter/app.properties"));
- * </pre>
+ * Każda zmiana przez setRaw() lub resetToDefaults() jest natychmiast
+ * zapisywana na dysk (do configPath zapamiętanego przy load()) — bez tego
+ * zmiany z GUI istniałyby tylko w pamięci aktualnej sesji i ginęłyby
+ * po restarcie aplikacji, bo load() i tak na nowo czyta plik z dysku.
+ * Zapisywane są tylko wartości różniące się od domyślnych (Properties.store()
+ * pisze jedynie jawnie ustawione wpisy, nie warstwę "defaults") — czyli plik
+ * user/app.properties zawiera dokładnie to, co zostało zmienione względem
+ * oryginału, nie pełną kopię.
+ *
+ * Singleton — jeden egzemplarz na aplikację, tworzony przez load().
  */
 public class AppConfig {
 
     private static final Logger log = LogManager.getLogger(AppConfig.class);
 
-    /** Nazwa pliku konfiguracyjnego w katalogu roboczym i na classpath. */
+    /** Nazwa pliku konfiguracyjnego — taka sama dla backupu i kopii zapisywalnej. */
     private static final String CONFIG_FILE_NAME = "app.properties";
 
+    /**
+     * Ścieżka (względna wobec katalogu roboczego) do zapisywalnej kopii
+     * konfiguracji — oddzielnej od bundlowanego resources/app.properties,
+     * żeby ten ostatni zawsze pozostawał nienaruszonym backupem.
+     */
+    private static final Path USER_CONFIG_RELATIVE_PATH =
+            Paths.get("src", "main", "resources", CONFIG_FILE_NAME);
+
     private final Properties props;
+    private final Path       configPath;
 
     // -------------------------------------------------------------------------
     // Statyczne metody fabryczne
     // -------------------------------------------------------------------------
 
     /**
-     * Ładuje konfigurację z domyślnej lokalizacji.
-     * Szuka {@code app.properties} w katalogu roboczym,
-     * a jako fallback używa wbudowanych wartości domyślnych.
+     * Ładuje konfigurację z domyślnej, zapisywalnej lokalizacji
+     * (src/main/resources/user/app.properties względem katalogu roboczego).
+     * Jeśli ten plik jeszcze nie istnieje (pierwsze uruchomienie albo świeże
+     * środowisko), aplikacja startuje na wbudowanych wartościach domyślnych,
+     * a plik zostanie utworzony automatycznie przy pierwszym zapisie ustawień.
      */
     public static AppConfig load() {
-        Path workDir = Paths.get(System.getProperty("user.dir"), CONFIG_FILE_NAME);
-        return load(workDir);
+        Path userConfigPath = Paths.get(System.getProperty("user.dir"))
+                .resolve(USER_CONFIG_RELATIVE_PATH);
+        return load(userConfigPath);
     }
 
     /**
      * Ładuje konfigurację z podanej ścieżki.
      * Jeśli plik nie istnieje — wraca do wbudowanych wartości domyślnych.
+     * Ścieżka jest zapamiętywana — kolejne zmiany przez setRaw() będą
+     * zapisywane właśnie do tego pliku.
      *
      * @param configPath ścieżka do pliku .properties
      */
@@ -72,19 +94,21 @@ public class AppConfig {
                         configPath, e.getMessage());
             }
         } else {
-            log.info("Plik '{}' nie istnieje — używam wartości domyślnych z classpath", configPath);
+            log.info("Plik '{}' nie istnieje jeszcze — startuję na wartościach domyślnych " +
+                     "z classpath (zostanie utworzony automatycznie przy pierwszym zapisie)", configPath);
         }
 
-        return new AppConfig(merged);
+        return new AppConfig(merged, configPath);
     }
 
     // -------------------------------------------------------------------------
     // Konstruktor (prywatny)
     // -------------------------------------------------------------------------
 
-    private AppConfig(Properties props) {
-        this.props = props;
-        log.debug("AppConfig zainicjalizowany z {} kluczami", props.size());
+    private AppConfig(Properties props, Path configPath) {
+        this.props      = props;
+        this.configPath = configPath;
+        log.debug("AppConfig zainicjalizowany z {} kluczami, zapis do: {}", props.size(), configPath);
     }
 
     // -------------------------------------------------------------------------
@@ -96,11 +120,6 @@ public class AppConfig {
         return PersistenceMode.fromString(get("persistence.mode"));
     }
 
-    /** Format pliku przy trybie FILE: {@code JSON} lub {@code CSV}. */
-    public String getStorageFileFormat() {
-        return get("storage.file.format").toUpperCase();
-    }
-
     /** Katalog zapisu plików danych (ścieżka z properties). */
     public String getStorageFileDir() {
         return get("storage.file.dir");
@@ -110,7 +129,26 @@ public class AppConfig {
     // Baza danych
     // -------------------------------------------------------------------------
 
-    public String getDbUrl()      { return get("db.url"); }
+    /**
+     * Zwraca URL JDBC do połączenia z bazą danych.
+     *
+     * Jeśli z jakiegokolwiek powodu wartość okaże się pusta (np. nieaktualny
+     * build classpath bez najnowszego app.properties, błąd w pliku konfiguracyjnym),
+     * zwracamy zakodowany fallback do lokalnego SQLite — bez tego HikariCP
+     * rzuca kryptyczny "dataSource or dataSourceClassName or jdbcUrl is required"
+     * zamiast jasno wskazać przyczynę.
+     */
+    public String getDbUrl() {
+        String url = get("db.url");
+        if (url.isEmpty()) {
+            log.warn("db.url jest puste w konfiguracji (sprawdź czy app.properties na classpath " +
+                     "jest aktualny — np. po 'mvn clean package') — używam awaryjnego SQLite: " +
+                     "jdbc:sqlite:./data/ecoalerter.db");
+            return "jdbc:sqlite:./data/ecoalerter.db";
+        }
+        return url;
+    }
+
     public String getDbUser()     { return get("db.user"); }
     public String getDbPassword() { return get("db.password"); }
 
@@ -123,8 +161,19 @@ public class AppConfig {
     // API IMGW
     // -------------------------------------------------------------------------
 
+    /**
+     * Zwraca bazowy URL API IMGW. Tak jak getDbUrl() — awaryjny fallback
+     * na wypadek pustej wartości z konfiguracji, bo bez tego URL-a aplikacja
+     * nie może wykonać żadnego zapytania do API.
+     */
     public String getApiBaseUrl() {
-        return get("api.imgw.base.url");
+        String url = get("api.imgw.base.url");
+        if (url.isEmpty()) {
+            log.warn("api.imgw.base.url jest puste w konfiguracji — używam awaryjnego: " +
+                     "https://danepubliczne.imgw.pl/api/data");
+            return "https://danepubliczne.imgw.pl/api/data";
+        }
+        return url;
     }
 
     /** Timeout żądania HTTP w sekundach. */
@@ -212,12 +261,64 @@ public class AppConfig {
     }
 
     /**
-     * Ustawia właściwość w pamięci (nie zapisuje do pliku).
-     * Używane przez SettingsPanel do live-reload wybranych wartości.
+     * Ustawia właściwość i natychmiast zapisuje całą konfigurację na dysk.
+     * Bez zapisu na dysk zmiana istniałaby tylko w pamięci aktualnej sesji
+     * i zostałaby utracona przy następnym starcie aplikacji, ponieważ load()
+     * zawsze na nowo czyta plik z dysku.
+     *
+     * @param key   nazwa właściwości (np. "persistence.mode")
+     * @param value nowa wartość jako String
      */
     public void setRaw(String key, String value) {
         props.setProperty(key, value);
-        log.debug("Konfiguracja zaktualizowana w pamięci: {} = {}", key, value);
+        log.debug("Konfiguracja zaktualizowana: {} = {}", key, value);
+        save();
+    }
+
+    /**
+     * Resetuje wszystkie ustawienia do wartości domyślnych (wbudowanych
+     * lub z classpath app.properties) i natychmiast zapisuje ten stan na dysk —
+     * inaczej restart aplikacji wczytałby z powrotem stare, nadpisane wartości
+     * z wciąż istniejącego na dysku pliku konfiguracyjnego.
+     *
+     * props zostało skonstruowane jako new Properties(defaults) — wywołanie
+     * clear() usuwa tylko jawnie ustawione wpisy, dzięki czemu każde kolejne
+     * getProperty() automatycznie spada na warstwę domyślną.
+     */
+    public void resetToDefaults() {
+        props.clear();
+        log.info("Konfiguracja zresetowana do wartości domyślnych");
+        save();
+    }
+
+    /**
+     * Zapisuje aktualną konfigurację do pliku, z którego została wczytana
+     * (configPath zapamiętane przy load()). Zapisywane są tylko jawnie
+     * nadpisane wartości (nie wbudowane defaulty) — Properties.store()
+     * naturalnie ignoruje warstwę "defaults" przekazaną w konstruktorze,
+     * co jest tu zachowaniem zamierzonym: plik na dysku zawiera wyłącznie
+     * to, co różni się od wartości domyślnych.
+     *
+     * Błąd zapisu jest logowany, ale nie przerywa działania aplikacji —
+     * zmiana zostaje przynajmniej zastosowana w pamięci do końca sesji.
+     */
+    public void save() {
+        try {
+            Path parent = configPath.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+
+            try (OutputStream os = Files.newOutputStream(configPath)) {
+                props.store(os, "EcoAlerter IMGW — zapisane automatycznie przez aplikację");
+            }
+
+            log.debug("Konfiguracja zapisana do: {}", configPath.toAbsolutePath());
+
+        } catch (IOException e) {
+            log.error("Nie udało się zapisać konfiguracji do {}: {}",
+                    configPath, e.getMessage());
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -269,7 +370,6 @@ public class AppConfig {
     /** Ostatnia linia obrony — wartości zakodowane na stałe w kodzie. */
     private static void loadHardcodedDefaults(Properties p) {
         p.setProperty("persistence.mode",                    "FILE");
-        p.setProperty("storage.file.format",                 "JSON");
         p.setProperty("storage.file.dir",                    "./data");
         p.setProperty("db.url",                              "jdbc:sqlite:./data/ecoalerter.db");
         p.setProperty("db.user",                             "");
