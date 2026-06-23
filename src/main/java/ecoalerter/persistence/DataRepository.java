@@ -215,6 +215,9 @@ public interface DataRepository {
      * @throws PersistenceException gdy usunięcie się nie powiedzie
     */
     int deleteExpiredWarnings() throws PersistenceException;
+    
+    
+    void clearAllData() throws PersistenceException;
 
     /**
      * Zamyka zasoby repozytorium (połączenia z bazą, uchwyty plików).

@@ -52,7 +52,7 @@ public final class ApiEndpoints {
     /**
      * Buduje pełny URL dla endpointu z dynamicznym parametrem (np. ID stacji).
      *
-     * @param endpointPrefix np. {@link #SYNOP_BY_ID}
+     * @param endpointPrefix np. {@link #METEO_BY_ID}
      * @param param          wartość parametru (ID lub nazwa)
      * @return pełny URL
     */

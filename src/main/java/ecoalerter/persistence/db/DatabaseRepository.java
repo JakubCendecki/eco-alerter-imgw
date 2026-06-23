@@ -78,6 +78,40 @@ public class DatabaseRepository implements DataRepository {
     }
 
     @Override
+    public void clearAllData() throws PersistenceException {
+    	try {
+    		String sql = "DELETE FROM meteo_data";
+            try (Connection conn = pool.getConnection();
+            	PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new PersistenceException("Błąd czyszczenia danych meteo w DB", e);
+            }
+            
+            sql = "DELETE FROM hydro_data";
+            try (Connection conn = pool.getConnection();
+            	PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new PersistenceException("Błąd czyszczenia danych hydro w DB", e);
+            }
+            
+            sql = "DELETE FROM warnings";
+            try (Connection conn = pool.getConnection();
+            	PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new PersistenceException("Błąd czyszczenia danych o ostrzeżeniach w DB", e);
+            }
+
+            log.info("Wyczyszczono wszystkie dane (DB)");
+    	} catch (Exception e) {
+    		throw new PersistenceException("Błąd czyszczenie danych w DB", e);
+    	}
+    	
+    }
+    
+    @Override
     public void deleteStation(String stationId, StationType type) throws PersistenceException {
         String sql = "DELETE FROM stations WHERE id = ? AND type = ?";
 

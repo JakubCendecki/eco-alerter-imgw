@@ -69,7 +69,7 @@ public final class TableSortUtil {
 
     /**
      * Komparator dla kolumny "Poziom" w tabeli ostrzeżeń. Sortuje po
-     * rzeczywistej wadze zagrożenia (Żółty < Pomarańczowy < Czerwony),
+     * rzeczywistej wadze zagrożenia (Żółty, Pomarańczowy, Czerwony),
      * nie alfabetycznie — bez tego "Czerwony" sortowałby się przed
      * "Pomarańczowy" i "Żółty", co jest odwrotne do faktycznej istotności.
      *

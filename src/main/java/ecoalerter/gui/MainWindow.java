@@ -49,7 +49,7 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
 
     private static final Logger log = AppLogger.get(MainWindow.class);
 
-    private static final String APP_TITLE   = "EcoAlerter IMGW";
+    private static final String APP_TITLE   = "ECO Alert";
     private static final int    STATUS_REFRESH_INTERVAL_MS = 5_000;
 
     private final StationService         stationService;

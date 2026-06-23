@@ -4,6 +4,7 @@ import ecoalerter.config.AppConfig;
 import ecoalerter.model.Station;
 import ecoalerter.model.StationType;
 import ecoalerter.persistence.DataRepository;
+import ecoalerter.persistence.DuplicateStationException;
 import ecoalerter.persistence.PersistenceException;
 import ecoalerter.scheduler.TaskSchedulerManager;
 import ecoalerter.util.AppLogger;
@@ -33,6 +34,12 @@ public class StationService {
     // Konstruktor
     // -------------------------------------------------------------------------
 
+    /**
+     * @param repository repozytorium do zapisu/odczytu stacji i ich danych
+     * @param scheduler  zarządca harmonogramu zadań cyklicznych
+     * @param config     konfiguracja aplikacji (pole przyjmowane dla spójności
+     *                   z DI, choć obecnie nie jest przechowywane w polu serwisu)
+     */
     public StationService(DataRepository repository,
                           TaskSchedulerManager scheduler,
                           AppConfig config) {
@@ -46,15 +53,25 @@ public class StationService {
 
     /**
      * Dodaje nową stację do systemu i planuje dla niej zadanie cykliczne.
-     * Jeśli stacja o tym samym id i type już istnieje, aktualizuje jej dane (upsert).
+     *
+     * Jeśli stacja o tym samym ID i typie już istnieje w repozytorium, rzucany
+     * jest {@link DuplicateStationException} — zapisana stacja NIE jest podmieniana
+     * w tle. Do zmiany parametrów istniejącej stacji służy editStation().
      *
      * @param station stacja do dodania; nie może być null
-     * @throws PersistenceException gdy zapis do repozytorium się nie powiedzie
-     * @throws IllegalArgumentException gdy station lub station.getId() jest null
+     * @throws DuplicateStationException gdy stacja o tym ID i typie już istnieje
+     * @throws PersistenceException      gdy zapis do repozytorium się nie powiedzie
+     * @throws IllegalArgumentException  gdy station lub station.getId() jest null
      */
     public void addStation(Station station) throws PersistenceException {
         if (station == null || station.getId() == null) {
             throw new IllegalArgumentException("Stacja i jej ID nie mogą być null");
+        }
+
+        if (exists(station.getId(), station.getType())) {
+            throw new DuplicateStationException(
+                    "Stacja \"" + station.getId() + "\" (" + station.getType().name() +
+                    ") jest już dodana. Użyj „Edytuj…\", aby zmienić jej parametry.");
         }
 
         repository.saveStation(station);
@@ -126,11 +143,13 @@ public class StationService {
     // -------------------------------------------------------------------------
 
     /**
-     * Aktywuje stację — wznawia cykliczne pobieranie danych.
-     * Jeśli stacja nie istnieje w repozytorium, operacja jest ignorowana z ostrzeżeniem.
+     * Aktywuje stację — wznawia cykliczne pobieranie danych przez scheduler.
+     * Jeśli stacja nie istnieje w repozytorium, operacja jest ignorowana
+     * z ostrzeżeniem w logu; nie rzucamy wyjątku, żeby GUI nie musiało
+     * dodatkowo sprawdzać istnienia przed każdym kliknięciem.
      *
      * @param stationId identyfikator stacji
-     * @param type      typ stacji
+     * @param type      typ stacji (METEO lub HYDRO)
      * @throws PersistenceException gdy aktualizacja repozytorium się nie powiedzie
      */
     public void activateStation(String stationId, StationType type) throws PersistenceException {
@@ -151,6 +170,8 @@ public class StationService {
 
     /**
      * Dezaktywuje stację — wstrzymuje pobieranie danych bez usuwania historii.
+     * Stacja pozostaje w repozytorium (i w GUI), ale scheduler już jej nie odpyta
+     * aż do ponownej aktywacji.
      *
      * @param stationId identyfikator stacji
      * @param type      typ stacji
@@ -177,8 +198,9 @@ public class StationService {
     // -------------------------------------------------------------------------
 
     /**
-     * Zmienia interwał odpytywania API dla stacji.
-     * Zmiana jest natychmiast stosowana — scheduler przeplanowuje zadanie.
+     * Zmienia interwał odpytywania API dla stacji. Zmiana jest natychmiast
+     * stosowana — scheduler przeplanowuje zadanie bez restartu aplikacji.
+     * Wartości mniejsze niż 60 sekund są przycinane (clamp) do 60.
      *
      * @param stationId       identyfikator stacji
      * @param type            typ stacji
@@ -210,9 +232,9 @@ public class StationService {
     // -------------------------------------------------------------------------
 
     /**
-     * Zwraca listę wszystkich zarejestrowanych stacji.
+     * Zwraca wszystkie zarejestrowane stacje (aktywne i nieaktywne).
      *
-     * @return lista stacji; pusta gdy brak zapisanych stacji
+     * @return lista stacji; pusta gdy nic jeszcze nie dodano
      * @throws PersistenceException gdy odczyt z repozytorium się nie powiedzie
      */
     public List<Station> getAllStations() throws PersistenceException {
@@ -220,10 +242,11 @@ public class StationService {
     }
 
     /**
-     * Zwraca aktywne stacje podanego typu.
+     * Zwraca aktywne stacje podanego typu — wykorzystywane przez scheduler
+     * i przez batch-fetch po starcie aplikacji.
      *
      * @param type typ stacji (METEO lub HYDRO)
-     * @return lista aktywnych stacji
+     * @return lista aktywnych stacji danego typu
      * @throws PersistenceException gdy odczyt z repozytorium się nie powiedzie
      */
     public List<Station> getActiveByType(StationType type) throws PersistenceException {
@@ -231,7 +254,8 @@ public class StationService {
     }
 
     /**
-     * Sprawdza czy stacja o podanym id i typie istnieje w repozytorium.
+     * Sprawdza czy stacja o podanym ID i typie istnieje w repozytorium.
+     * Wykorzystywane m.in. przez addStation do wykrywania duplikatów.
      *
      * @param stationId identyfikator stacji
      * @param type      typ stacji
@@ -244,7 +268,7 @@ public class StationService {
 
     /**
      * Przy starcie aplikacji planuje wszystkie aktywne stacje z repozytorium.
-     * Wywoływać raz po inicjalizacji schedulera.
+     * Wywoływać raz po inicjalizacji schedulera (np. z MainWindow.startServices()).
      *
      * @throws PersistenceException gdy odczyt stacji z repozytorium się nie powiedzie
      */
@@ -259,6 +283,16 @@ public class StationService {
     // Pomocnicze
     // -------------------------------------------------------------------------
 
+    /**
+     * Wyszukuje stację po złożonym kluczu (ID + typ).
+     * Każde wywołanie czyta z repozytorium — jeśli używasz tego w pętli,
+     * pobierz listę raz przez {@link #getAllStations()} i filtruj lokalnie.
+     *
+     * @param stationId identyfikator stacji
+     * @param type      typ stacji
+     * @return Optional ze stacją albo empty gdy nie istnieje
+     * @throws PersistenceException gdy odczyt z repozytorium się nie powiedzie
+     */
     private Optional<Station> findStation(String stationId, StationType type)
             throws PersistenceException {
         return repository.findAllStations().stream()

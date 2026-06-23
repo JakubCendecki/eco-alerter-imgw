@@ -176,11 +176,6 @@ public class FetchTask implements Runnable {
 
         MeteoData data = dataOpt.get();
 
-        // Filtrowanie pól wg DataTypeConfig — nadpisz nullami wyłączone pomiary
-        if (!dataTypeConfig.isTemperatureEnabled())   data.setTemperature(null);
-        if (!dataTypeConfig.isWindEnabled())           data.setWindSpeed(null);
-        if (!dataTypeConfig.isPrecipitationEnabled())  data.setPrecipitation(null);
-
         if (!data.hasAnyMeasurement()) {
             log.debug("Wszystkie pola meteo wyłączone — pomijam zapis dla {}", station.getId());
             return;
@@ -208,10 +203,6 @@ public class FetchTask implements Runnable {
         }
 
         HydroData data = dataOpt.get();
-
-        // Filtrowanie pól wg DataTypeConfig
-        if (!dataTypeConfig.isWaterLevelEnabled())       data.setWaterLevel(null);
-        if (!dataTypeConfig.isWaterTemperatureEnabled()) data.setWaterTemperature(null);
 
         if (!data.hasAnyMeasurement()) {
             log.debug("Wszystkie pola hydro wyłączone — pomijam zapis dla {}", station.getId());

@@ -34,10 +34,10 @@ public class JsonFileWriter {
 
     private final PathResolver pathResolver;
 
-    // -------------------------------------------------------------------------
-    // Konstruktor
-    // -------------------------------------------------------------------------
-
+    /**
+     * @param pathResolver komponent do budowania ścieżek plików per stacja
+     *                     (data/meteo/&lt;id&gt;.json itd.)
+     */
     public JsonFileWriter(PathResolver pathResolver) {
         this.pathResolver = pathResolver;
     }
@@ -47,8 +47,9 @@ public class JsonFileWriter {
     // -------------------------------------------------------------------------
 
     /**
-     * Dopisuje pomiar meteo do pliku JSON stacji.
-     * Tworzy plik jeśli nie istnieje. Duplikaty (ta sama stacja + timestamp) są pomijane.
+     * Dopisuje pojedynczy pomiar meteo do pliku JSON stacji. Tworzy plik
+     * (i katalogi) jeśli nie istnieje. Duplikaty (ten sam timestamp) są
+     * pomijane — zob. {@link #appendToJsonArray}.
      *
      * @param data pomiar do zapisania
      * @throws PersistenceException gdy zapis pliku się nie powiedzie
@@ -58,15 +59,15 @@ public class JsonFileWriter {
     }
 
     /**
-     * Dopisuje listę pomiarów meteo do odpowiednich plików JSON (grupuje po stacji).
+     * Dopisuje listę pomiarów meteo. Grupuje po stacji — każdy pomiar trafia
+     * do pliku odpowiadającego jego {@code stationId + stationName}.
      *
-     * @param dataList lista pomiarów
-     * @throws PersistenceException gdy zapis jakiegokolwiek pliku się nie powiedzie
+     * @param dataList lista pomiarów (null lub pusta — brak operacji)
+     * @throws PersistenceException gdy zapis któregokolwiek pliku się nie powiedzie
      */
     public void writeMeteoList(List<MeteoData> dataList) throws PersistenceException {
         if (dataList == null || dataList.isEmpty()) return;
 
-        // Grupuj po stacji — każda stacja ma osobny plik
         for (MeteoData data : dataList) {
             Path file = pathResolver.resolveMeteoFile(
                     data.getStationId(), data.getStationName(), "json");
@@ -93,7 +94,7 @@ public class JsonFileWriter {
     // -------------------------------------------------------------------------
 
     /**
-     * Dopisuje pomiar hydro do pliku JSON stacji.
+     * Dopisuje pojedynczy pomiar hydro do pliku JSON stacji.
      *
      * @param data pomiar do zapisania
      * @throws PersistenceException gdy zapis pliku się nie powiedzie
@@ -103,10 +104,11 @@ public class JsonFileWriter {
     }
 
     /**
-     * Dopisuje listę pomiarów hydro do odpowiednich plików JSON.
+     * Dopisuje listę pomiarów hydro do odpowiednich plików JSON
+     * (po jednym pliku na stację).
      *
-     * @param dataList lista pomiarów
-     * @throws PersistenceException gdy zapis jakiegokolwiek pliku się nie powiedzie
+     * @param dataList lista pomiarów (null lub pusta — brak operacji)
+     * @throws PersistenceException gdy zapis któregokolwiek pliku się nie powiedzie
      */
     public void writeHydroList(List<HydroData> dataList) throws PersistenceException {
         if (dataList == null || dataList.isEmpty()) return;
@@ -137,16 +139,18 @@ public class JsonFileWriter {
     // -------------------------------------------------------------------------
 
     /**
-     * Zapisuje listę ostrzeżeń do pliku JSON z bieżącą datą w nazwie.
-     * Plik ostrzeżeń jest zawsze nadpisywany (nie dopisywany) — zawiera bieżący stan.
+     * Zapisuje listę ostrzeżeń do pliku JSON z bieżącą datą w nazwie. Plik
+     * jest zawsze NADPISYWANY (nie dopisywany) — zawiera bieżący stan ostrzeżeń.
+     * Tworzy katalog warnings jeśli nie istnieje.
      *
-     * @param warnings lista ostrzeżeń do zapisania
+     * @param warnings lista ostrzeżeń (null → zapisany jako pusta tablica JSON)
      * @throws PersistenceException gdy zapis pliku się nie powiedzie
      */
     public void writeWarnings(List<Warning> warnings) throws PersistenceException {
         if (warnings == null) warnings = List.of();
 
         Path file = pathResolver.resolveWarningsFile(DateTimeUtil.todayForFilename(), "json");
+        ensureParentDirExists(file);
 
         try {
             String json = JsonParser.toPrettyJson(warnings);
@@ -161,7 +165,7 @@ public class JsonFileWriter {
     /**
      * Odczytuje ostrzeżenia z pliku JSON dla podanej daty.
      *
-     * @param date data w formacie yyyy-MM-dd
+     * @param date data w formacie yyyy-MM-dd (część nazwy pliku)
      * @return lista ostrzeżeń lub pusta lista gdy plik nie istnieje
      * @throws PersistenceException gdy odczyt pliku się nie powiedzie
      */
@@ -182,6 +186,12 @@ public class JsonFileWriter {
      * natychmiast po starcie) dopisywałby kolejną kopię tego samego pomiaru,
      * jeśli IMGW jeszcze nie zaktualizowało danych — co prowadziłoby do
      * wielu identycznych wierszy o tej samej godzinie pomiaru.
+     *
+     * @param file  ścieżka do pliku JSON
+     * @param item  obiekt do dopisania
+     * @param clazz klasa obiektu (potrzebna dla deserializacji istniejącej zawartości)
+     * @param <T>   typ obiektu (MeteoData lub HydroData)
+     * @throws PersistenceException gdy odczyt lub zapis pliku się nie powiedzie
      */
     private <T> void appendToJsonArray(Path file, T item, Class<T> clazz)
             throws PersistenceException {
@@ -193,6 +203,8 @@ public class JsonFileWriter {
         }
 
         existing.add(item);
+
+        ensureParentDirExists(file);
 
         try {
             String json = JsonParser.toPrettyJson(existing);
@@ -207,8 +219,13 @@ public class JsonFileWriter {
     /**
      * Sprawdza czy lista zawiera już rekord z tym samym znacznikiem czasu
      * co nowy element. Obsługuje MeteoData i HydroData — jedyne dwa typy
-     * przechodzące przez appendToJsonArray (Warning zawsze nadpisuje cały plik,
-     * nie dopisuje, więc nie potrzebuje tej kontroli).
+     * przechodzące przez {@link #appendToJsonArray} (Warning zawsze nadpisuje
+     * cały plik, nie dopisuje, więc nie potrzebuje tej kontroli).
+     *
+     * @param existing lista istniejących rekordów
+     * @param newItem  nowy rekord do sprawdzenia
+     * @param <T>      typ rekordu
+     * @return true jeśli któryś z istniejących ma ten sam znacznik czasu
      */
     private <T> boolean containsSameTimestamp(List<T> existing, T newItem) {
         java.time.LocalDateTime newTimestamp = extractTimestamp(newItem);
@@ -222,6 +239,10 @@ public class JsonFileWriter {
         return false;
     }
 
+    /**
+     * Wyciąga znacznik czasu pomiaru z MeteoData/HydroData.
+     * Dla innych typów (lub null) zwraca null.
+     */
     private java.time.LocalDateTime extractTimestamp(Object item) {
         if (item instanceof MeteoData m) return m.getTimestamp();
         if (item instanceof HydroData h) return h.getTimestamp();
@@ -230,7 +251,14 @@ public class JsonFileWriter {
 
     /**
      * Odczytuje tablicę JSON z pliku i mapuje na listę obiektów.
-     * Zwraca pustą, modyfikowalną listę gdy plik nie istnieje lub jest pusty.
+     * Zwraca pustą, modyfikowalną listę gdy plik nie istnieje lub jest pusty
+     * — wygodne dla wywołań typu „przeczytaj, dodaj rekord, zapisz".
+     *
+     * @param file  ścieżka pliku JSON
+     * @param clazz klasa elementu tablicy
+     * @param <T>   typ elementu
+     * @return modyfikowalna lista (nigdy null)
+     * @throws PersistenceException gdy odczyt pliku się nie powiedzie
      */
     private <T> List<T> readJsonArray(Path file, Class<T> clazz) throws PersistenceException {
         if (!Files.exists(file)) {
@@ -243,6 +271,26 @@ public class JsonFileWriter {
             return new ArrayList<>(JsonParser.fromJsonList(content, clazz));
         } catch (IOException e) {
             throw new PersistenceException("Błąd odczytu pliku JSON: " + file, e);
+        }
+    }
+
+    /**
+     * Tworzy katalog nadrzędny dla pliku, jeśli nie istnieje.
+     *
+     * Operacja idempotentna — gdy katalog już istnieje, nic się nie dzieje.
+     * Wywoływana przed każdym zapisem, żeby zabezpieczyć się przed scenariuszem,
+     * w którym użytkownik (lub coś innego) usuwa katalog data/ podczas
+     * działania aplikacji — bez tego pierwsze odświeżenie po usunięciu kończy
+     * się NoSuchFileException, mimo że PathResolver tworzy katalogi przy starcie.
+     */
+    private void ensureParentDirExists(Path file) throws PersistenceException {
+        Path parent = file.getParent();
+        if (parent == null) return;
+        try {
+            Files.createDirectories(parent);
+        } catch (IOException e) {
+            throw new PersistenceException(
+                    "Nie udało się utworzyć katalogu " + parent + ": " + e.getMessage(), e);
         }
     }
 }
