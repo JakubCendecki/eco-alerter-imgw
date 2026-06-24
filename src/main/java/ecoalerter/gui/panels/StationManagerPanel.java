@@ -17,6 +17,7 @@ import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -24,6 +25,8 @@ import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagLayout;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -83,6 +86,29 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         stationTable.setActiveToggleListener(this::onActiveToggled);
         stationTable.getTable().getSelectionModel().addListSelectionListener(
                 e -> updateButtonStates());
+
+        // Dwuklik w wiersz → edycja stacji (taki sam efekt jak kliknięcie
+        // przycisku „Edytuj..."). Sprawdzamy że klik trafił w jakiś wiersz
+        // (rowAtPoint < 0 oznacza klik w puste miejsce pod tabelą) i że nie
+        // jest to kolumna z checkboxem aktywności — tam dwuklik powinien
+        // zostać przy normalnym toggle-toggle, nie otwierać dialogu edycji.
+        stationTable.getTable().addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() != 2 || !SwingUtilities.isLeftMouseButton(e)) return;
+
+                int viewRow = stationTable.getTable().rowAtPoint(e.getPoint());
+                if (viewRow < 0) return;
+
+                int viewCol = stationTable.getTable().columnAtPoint(e.getPoint());
+                Class<?> colClass = stationTable.getTable().getColumnClass(viewCol);
+                if (colClass == Boolean.class) return; // checkbox „Aktywna" — nie edytuj
+
+                if (stationTable.getSelectedStation() != null) {
+                    onEditStation();
+                }
+            }
+        });
 
         JButton addButton = new JButton("Dodaj stację...");
         addButton.addActionListener(e -> onAddStation());

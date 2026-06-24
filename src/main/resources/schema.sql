@@ -10,7 +10,6 @@
 -- Stacje pomiarowe
 -- PRIMARY KEY (id, type) — ta sama stacja IMGW może być typem METEO i HYDRO
 -- -----------------------------------------------------------------------------
-
 CREATE TABLE IF NOT EXISTS stations (
     id               TEXT    NOT NULL,
     name             TEXT    NOT NULL,
@@ -22,14 +21,12 @@ CREATE TABLE IF NOT EXISTS stations (
     PRIMARY KEY (id, type)
 );
 
-CREATE INDEX IF NOT EXISTS idx_stations_type_active
-    ON stations (type, active);
+CREATE INDEX IF NOT EXISTS idx_stations_type_active ON stations (type, active);
 
 -- -----------------------------------------------------------------------------
 -- Dane meteorologiczne
 -- UNIQUE (station_id, timestamp) zapobiega duplikatom przy ponownym pobraniu
 -- -----------------------------------------------------------------------------
-
 CREATE TABLE IF NOT EXISTS meteo_data (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     station_id    TEXT    NOT NULL,
@@ -40,19 +37,13 @@ CREATE TABLE IF NOT EXISTS meteo_data (
     created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_meteo_station_timestamp
-    ON meteo_data (station_id, timestamp);
-
-CREATE INDEX IF NOT EXISTS idx_meteo_station_id
-    ON meteo_data (station_id);
-
-CREATE INDEX IF NOT EXISTS idx_meteo_timestamp
-    ON meteo_data (timestamp);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_meteo_station_timestamp ON meteo_data (station_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_meteo_station_id ON meteo_data (station_id);
+CREATE INDEX IF NOT EXISTS idx_meteo_timestamp  ON meteo_data (timestamp);
 
 -- -----------------------------------------------------------------------------
 -- Dane hydrologiczne
 -- -----------------------------------------------------------------------------
-
 CREATE TABLE IF NOT EXISTS hydro_data (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
     station_id            TEXT    NOT NULL,
@@ -65,43 +56,42 @@ CREATE TABLE IF NOT EXISTS hydro_data (
     created_at            TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_hydro_station_timestamp
-    ON hydro_data (station_id, timestamp);
-
-CREATE INDEX IF NOT EXISTS idx_hydro_station_id
-    ON hydro_data (station_id);
-
-CREATE INDEX IF NOT EXISTS idx_hydro_timestamp
-    ON hydro_data (timestamp);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_hydro_station_timestamp ON hydro_data (station_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_hydro_station_id ON hydro_data (station_id);
+CREATE INDEX IF NOT EXISTS idx_hydro_timestamp  ON hydro_data (timestamp);
 
 -- -----------------------------------------------------------------------------
 -- Ostrzeżenia
 -- valid_until NULL oznacza bezterminowe (zawsze aktywne)
+-- office — biuro IMGW wystawiające ostrzeżenie (pole "biuro" w obu endpointach API)
 -- -----------------------------------------------------------------------------
-
 CREATE TABLE IF NOT EXISTS warnings (
     id          TEXT    PRIMARY KEY,
     station_id  TEXT,
     level       TEXT    NOT NULL CHECK (level IN ('YELLOW', 'ORANGE', 'RED')),
-    type        TEXT    NOT NULL CHECK (type  IN ('METEO', 'HYDRO')),
+    type        TEXT    NOT NULL CHECK (type IN ('METEO', 'HYDRO')),
     phenomenon  TEXT,
     probability INTEGER NOT NULL DEFAULT -1,
     message     TEXT,
+    office      TEXT,
     issued_at   TEXT    NOT NULL,
     valid_until TEXT,
     created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_warnings_valid_until
-    ON warnings (valid_until);
+CREATE INDEX IF NOT EXISTS idx_warnings_valid_until ON warnings (valid_until);
+CREATE INDEX IF NOT EXISTS idx_warnings_level_type  ON warnings (level, type);
 
-CREATE INDEX IF NOT EXISTS idx_warnings_level_type
-    ON warnings (level, type);
+-- -----------------------------------------------------------------------------
+-- Migracje schematu (idempotentne — SchemaInitializer ignoruje "duplicate column")
+-- Dla istniejących baz ze starszą wersją schematu — dokłada brakujące kolumny
+-- bez naruszania istniejących danych.
+-- -----------------------------------------------------------------------------
+ALTER TABLE warnings ADD COLUMN office TEXT;
 
 -- -----------------------------------------------------------------------------
 -- Metadane aplikacji (wersja schematu — do przyszłych migracji)
 -- -----------------------------------------------------------------------------
-
 CREATE TABLE IF NOT EXISTS app_metadata (
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL,
@@ -109,5 +99,5 @@ CREATE TABLE IF NOT EXISTS app_metadata (
 );
 
 INSERT OR IGNORE INTO app_metadata (key, value) VALUES
-    ('schema_version', '1'),
+    ('schema_version', '2'),
     ('created_at',     strftime('%Y-%m-%d %H:%M:%S', 'now'));

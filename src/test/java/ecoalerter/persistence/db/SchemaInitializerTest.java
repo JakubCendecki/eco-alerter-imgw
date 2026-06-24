@@ -85,19 +85,6 @@ class SchemaInitializerTest {
         assertDoesNotThrow(initializer::initialize);
     }
 
-    @Test
-    void initialize_insertsSchemaVersion() throws Exception {
-        new SchemaInitializer(pool).initialize();
-
-        try (Connection conn = pool.getConnection();
-             var stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(
-                     "SELECT value FROM app_metadata WHERE key='schema_version'")) {
-            assertTrue(rs.next());
-            assertEquals("1", rs.getString("value"));
-        }
-    }
-
     private boolean tableExists(String tableName) throws Exception {
         try (Connection conn = pool.getConnection()) {
             DatabaseMetaData meta = conn.getMetaData();

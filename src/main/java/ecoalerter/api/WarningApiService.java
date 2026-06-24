@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
+
 import ecoalerter.model.StationType;
 import ecoalerter.model.Warning;
 import ecoalerter.model.WarningLevel;
@@ -20,60 +21,39 @@ import java.util.List;
  * Serwis pobierający, parsujący i filtrujący ostrzeżenia pogodowe
  * oraz hydrologiczne z API IMGW-PIB.
  *
- * Korzysta z endpointów ApiEndpoints.WARNINGS_METEO oraz ApiEndpoints.WARNINGS_HYDRO.
- *
  * UWAGA — oba endpointy zwracają zupełnie różne nazwy pól dla analogicznych
  * koncepcji, dlatego parsowanie meteo i hydro jest rozdzielone na dwie
- * niezależne metody (parseMeteoObject / parseHydroObject), a nie wspólny
- * parser z listą alternatywnych nazw pól.
+ * niezależne metody (parseMeteoObject / parseHydroObject).
  *
- * Rzeczywista odpowiedź /warningsmeteo (przykład):
- *   id, nazwa_zdarzenia, stopien, prawdopodobienstwo,
- *   obowiazuje_od, obowiazuje_do, opublikowano, tresc, komentarz, biuro, teryt[]
+ * Mapowanie pól z API IMGW:
+ * - meteo: tresc → message, biuro → office, nazwa_zdarzenia → phenomenon
+ * - hydro: przebieg → message, biuro → office, zdarzenie → phenomenon
  *
- * Rzeczywista odpowiedź /warningshydro (przykład):
- *   numer (NIE jest globalnie unikalny — brak pola "id"),
- *   stopień (z polskim znakiem ń — inna nazwa niż w meteo!),
- *   prawdopodobienstwo, data_od, data_do, opublikowano,
- *   zdarzenie, przebieg, komentarz, biuro, obszary[]
- *
- * Żadny z dwóch endpointów nie udostępnia identyfikatora konkretnej stacji
- * pomiarowej — ostrzeżenia są regionalne (kody TERYT dla meteo, zlewnie/województwa
- * dla hydro), więc Warning.stationId jest zawsze null dla obu typów.
- *
- * Gdy brak aktywnych ostrzeżeń, API może zwrócić pustą tablicę [] albo,
- * w niektórych przypadkach, obiekt {"status":false,"message":"..."} —
- * oba warianty są tu obsługiwane jako brak ostrzeżeń, nie jako błąd parsowania.
+ * Żaden z dwóch endpointów nie udostępnia identyfikatora konkretnej stacji
+ * pomiarowej — ostrzeżenia są regionalne, więc Warning.stationId jest zawsze null.
  */
 public class WarningApiService {
 
     private static final Logger log = LogManager.getLogger(WarningApiService.class);
 
-    /** Format daty używany przez oba endpointy IMGW — zawiera sekundy. */
     private static final DateTimeFormatter API_DATETIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    /** Rok używany przez IMGW jako sentinel "bezterminowo" (np. "9999-12-31 23:59:59"). */
     private static final int INDEFINITE_YEAR_SENTINEL = 9999;
 
     private final ImgwApiClient apiClient;
 
-    // -------------------------------------------------------------------------
-    // Konstruktor
-    // -------------------------------------------------------------------------
-
+    /**
+     * @param apiClient klient HTTP do API IMGW
+     */
     public WarningApiService(ImgwApiClient apiClient) {
         this.apiClient = apiClient;
     }
 
-    // -------------------------------------------------------------------------
-    // Publiczny interfejs
-    // -------------------------------------------------------------------------
-
     /**
      * Pobiera wszystkie bieżące ostrzeżenia meteorologiczne.
      *
-     * @return lista ostrzeżeń; pusta lista gdy brak alertów lub błąd parsowania
+     * @return lista ostrzeżeń; pusta gdy brak alertów lub błąd parsowania
      * @throws ApiException gdy żądanie HTTP nie powiedzie się
      */
     public List<Warning> fetchMeteoWarnings() throws ApiException {
@@ -95,7 +75,7 @@ public class WarningApiService {
     /**
      * Pobiera wszystkie bieżące ostrzeżenia hydrologiczne.
      *
-     * @return lista ostrzeżeń; pusta lista gdy brak alertów lub błąd parsowania
+     * @return lista ostrzeżeń; pusta gdy brak alertów lub błąd parsowania
      * @throws ApiException gdy żądanie HTTP nie powiedzie się
      */
     public List<Warning> fetchHydroWarnings() throws ApiException {
@@ -115,27 +95,23 @@ public class WarningApiService {
     }
 
     /**
-     * Pobiera ostrzeżenia obu typów (meteo + hydro) w jednym wywołaniu.
-     * Błąd jednego typu nie blokuje pobrania drugiego.
-     *
-     * @return połączona lista wszystkich aktywnych ostrzeżeń
-     * @throws ApiException gdy oba żądania nie powiodą się
+     * Pobiera ostrzeżenia obu typów (meteo + hydro). Błąd jednego typu nie
+     * blokuje pobrania drugiego — wyjątek leci dopiero, gdy obie operacje
+     * się nie powiodą.
      */
     public List<Warning> fetchAllWarnings() throws ApiException {
         List<Warning> meteo = Collections.emptyList();
         List<Warning> hydro = Collections.emptyList();
         ApiException lastError = null;
 
-        try {
-            meteo = fetchMeteoWarnings();
-        } catch (ApiException e) {
+        try { meteo = fetchMeteoWarnings(); }
+        catch (ApiException e) {
             log.warn("Nie udało się pobrać ostrzeżeń meteo: {}", e.getMessage());
             lastError = e;
         }
 
-        try {
-            hydro = fetchHydroWarnings();
-        } catch (ApiException e) {
+        try { hydro = fetchHydroWarnings(); }
+        catch (ApiException e) {
             log.warn("Nie udało się pobrać ostrzeżeń hydro: {}", e.getMessage());
             if (lastError != null) {
                 throw new ApiException("Nie udało się pobrać żadnych ostrzeżeń", e);
@@ -146,70 +122,44 @@ public class WarningApiService {
         List<Warning> all = new ArrayList<>();
         all.addAll(meteo);
         all.addAll(hydro);
-
         log.info("Pobrano łącznie {} ostrzeżeń (meteo={}, hydro={})",
                 all.size(), meteo.size(), hydro.size());
         return all;
     }
 
-    /**
-     * Filtruje listę ostrzeżeń — zwraca tylko te o poziomie >= minLevel.
-     *
-     * @param warnings lista do filtrowania
-     * @param minLevel minimalny poziom alertu (włącznie)
-     * @return przefiltrowana lista
-     */
+    /** Filtruje listę ostrzeżeń — zwraca tylko te o poziomie {@code >= minLevel}. */
     public List<Warning> filterByMinLevel(List<Warning> warnings, WarningLevel minLevel) {
         if (warnings == null || warnings.isEmpty()) return Collections.emptyList();
         if (minLevel == null) return new ArrayList<>(warnings);
-
         return warnings.stream()
                 .filter(w -> w.getLevel() != null && w.getLevel().ordinal() >= minLevel.ordinal())
                 .toList();
     }
 
     /**
-     * Filtruje ostrzeżenia dotyczące konkretnej stacji.
-     * Ponieważ API IMGW nie przypisuje ostrzeżeń do stacji pomiarowych
-     * (są regionalne), stationId w Warning jest zawsze null — metoda
-     * zwraca wtedy wszystkie ostrzeżenia bez filtrowania.
-     *
-     * @param warnings  lista ostrzeżeń
-     * @param stationId ID stacji
-     * @return ostrzeżenia powiązane ze stacją lub ogólne (stationId == null)
+     * Filtruje ostrzeżenia dotyczące konkretnej stacji. Ponieważ API IMGW
+     * nie przypisuje ostrzeżeń do stacji pomiarowych (są regionalne),
+     * w praktyce zwraca wszystkie ostrzeżenia.
      */
     public List<Warning> filterByStation(List<Warning> warnings, String stationId) {
         if (stationId == null || stationId.isBlank()) return new ArrayList<>(warnings);
-
         return warnings.stream()
-                .filter(w -> w.getStationId() == null
-                          || w.getStationId().equals(stationId.trim()))
+                .filter(w -> w.getStationId() == null || w.getStationId().equals(stationId.trim()))
                 .toList();
     }
 
-    /**
-     * Filtruje ostrzeżenia wg typu (METEO lub HYDRO).
-     *
-     * @param warnings lista ostrzeżeń
-     * @param type     typ do zachowania
-     * @return przefiltrowana lista
-     */
+    /** Filtruje ostrzeżenia wg typu (METEO lub HYDRO). */
     public List<Warning> filterByType(List<Warning> warnings, StationType type) {
         if (type == null) return new ArrayList<>(warnings);
-
         return warnings.stream()
                 .filter(w -> type.equals(w.getType()))
                 .toList();
     }
 
-    // -------------------------------------------------------------------------
-    // Parsowanie JSON — wspólny punkt wejścia
-    // -------------------------------------------------------------------------
-
     /**
-     * Parsuje odpowiedź API do listy ostrzeżeń. Obsługuje trzy warianty odpowiedzi:
+     * Parsuje odpowiedź API do listy ostrzeżeń. Obsługuje trzy warianty:
      * tablicę JSON z rekordami, pustą tablicę (brak ostrzeżeń), oraz obiekt
-     * {"status":false, ...} który IMGW zwraca czasem zamiast pustej tablicy.
+     * {@code {"status":false, ...}} który IMGW zwraca czasem zamiast pustej tablicy.
      */
     private List<Warning> parseWarningsArray(String json, StationType type) {
         List<Warning> result = new ArrayList<>();
@@ -218,8 +168,6 @@ public class WarningApiService {
             JsonElement root = JsonParser.parseString(json);
 
             if (root.isJsonObject()) {
-                // Odpowiedź typu {"status":false,"message":"No products were found"}
-                // — traktujemy jako brak ostrzeżeń, nie jako rekord do sparsowania.
                 JsonObject rootObj = root.getAsJsonObject();
                 if (rootObj.has("status")) {
                     log.info("API zwróciło status={} — brak ostrzeżeń typu {}",
@@ -246,7 +194,6 @@ public class WarningApiService {
                     log.warn("Pominięto nieprawidłowy rekord ostrzeżenia {}: {}", type, e.getMessage());
                 }
             }
-
         } catch (JsonParseException e) {
             log.error("Błąd parsowania ostrzeżeń JSON ({}): {}", type, e.getMessage());
         }
@@ -255,20 +202,16 @@ public class WarningApiService {
         return result;
     }
 
-    // -------------------------------------------------------------------------
-    // Parsowanie rekordu METEO
-    // -------------------------------------------------------------------------
-
     /**
-     * Mapuje jeden rekord z /warningsmeteo na Warning.
-     * Realne pola: id, nazwa_zdarzenia, stopien, prawdopodobienstwo,
-     * obowiazuje_od, obowiazuje_do, opublikowano, tresc, komentarz, biuro, teryt[].
+     * Mapuje jeden rekord z {@code /warningsmeteo} na {@link Warning}.
+     * Pola: id, nazwa_zdarzenia, stopien, prawdopodobienstwo, obowiazuje_od,
+     * obowiazuje_do, opublikowano, tresc, komentarz, biuro, teryt[].
      */
     private Warning parseMeteoObject(JsonObject obj) {
         Warning warning = new Warning();
 
         warning.setId(getString(obj, "id"));
-        warning.setStationId(null); // ostrzeżenia meteo są regionalne (teryt), nie per-stacja
+        warning.setStationId(null);
         warning.setType(StationType.METEO);
         warning.setLevel(parseLevel(obj, "stopien"));
         warning.setPhenomenon(getString(obj, "nazwa_zdarzenia"));
@@ -276,8 +219,10 @@ public class WarningApiService {
         warning.setIssuedAt(parseDateTime(obj, "opublikowano"));
         warning.setValidUntil(normalizeIndefinite(parseDateTime(obj, "obowiazuje_do")));
 
+        // Treść komunikatu + biuro wydające (NEW: oba pola pokazywane w dialogu szczegółów)
         String content = getString(obj, "tresc");
         warning.setMessage(content != null ? content : warning.getPhenomenon());
+        warning.setOffice(getString(obj, "biuro"));
 
         if (warning.getId() == null) {
             log.warn("Pominięto rekord meteo bez pola 'id'");
@@ -286,29 +231,23 @@ public class WarningApiService {
         return warning;
     }
 
-    // -------------------------------------------------------------------------
-    // Parsowanie rekordu HYDRO
-    // -------------------------------------------------------------------------
-
     /**
-     * Mapuje jeden rekord z /warningshydro na Warning.
-     * Realne pola: numer (NIE unikalny globalnie), stopień (z polskim ń),
+     * Mapuje jeden rekord z {@code /warningshydro} na {@link Warning}.
+     * Pola: numer (NIE unikalny globalnie), stopień (z polskim ń),
      * prawdopodobienstwo, data_od, data_do, opublikowano, zdarzenie,
      * przebieg, komentarz, biuro, obszary[].
      *
-     * API hydro nie udostępnia żadnego pola "id" — identyfikator jest
-     * syntetyzowany z numeru i czasu publikacji, co jest wystarczająco
-     * unikalne (ten sam "numer" bywa używany ponownie przez różne biura
-     * w różnym czasie).
+     * API hydro nie udostępnia pola "id" — identyfikator jest syntetyzowany
+     * z numeru i czasu publikacji.
      */
     private Warning parseHydroObject(JsonObject obj) {
         Warning warning = new Warning();
 
-        String numer        = getString(obj, "numer");
+        String numer = getString(obj, "numer");
         String opublikowano = getString(obj, "opublikowano");
-
         warning.setId(buildSyntheticHydroId(numer, opublikowano));
-        warning.setStationId(null); // ostrzeżenia hydro są regionalne (zlewnie), nie per-stacja
+
+        warning.setStationId(null);
         warning.setType(StationType.HYDRO);
         warning.setLevel(parseLevel(obj, "stopień"));
         warning.setPhenomenon(getString(obj, "zdarzenie"));
@@ -316,8 +255,10 @@ public class WarningApiService {
         warning.setIssuedAt(parseDateTime(obj, "opublikowano"));
         warning.setValidUntil(normalizeIndefinite(parseDateTime(obj, "data_do")));
 
+        // Treść komunikatu (w hydro to "przebieg") + biuro wydające
         String content = getString(obj, "przebieg");
         warning.setMessage(content != null ? content : warning.getPhenomenon());
+        warning.setOffice(getString(obj, "biuro"));
 
         return warning;
     }
@@ -330,25 +271,18 @@ public class WarningApiService {
      */
     private String buildSyntheticHydroId(String numer, String opublikowano) {
         String safeNumer = numer != null ? numer : "0";
-        String safeTime  = opublikowano != null
+        String safeTime = opublikowano != null
                 ? opublikowano.replaceAll("[^0-9]", "")
                 : String.valueOf(System.nanoTime());
         return "HYDRO-" + safeNumer + "-" + safeTime;
     }
 
-    // -------------------------------------------------------------------------
-    // Pomocnicze parsery
-    // -------------------------------------------------------------------------
-
     /**
-     * Parsuje poziom ostrzeżenia z pola numerycznego (1, 2, 3).
-     * Wartości poza tym zakresem (np. "-1" dla informacyjnych ostrzeżeń
-     * o suszy hydrologicznej) są mapowane na YELLOW jako bezpieczny fallback —
-     * IMGW nie przypisuje im koloru w swojej klasyfikacji, ale aplikacja
-     * musi wybrać jakiś poziom do wyświetlenia.
+     * Parsuje poziom ostrzeżenia z pola numerycznego (1, 2, 3). Wartości
+     * spoza zakresu są mapowane na YELLOW jako bezpieczny fallback.
      *
      * @param obj      obiekt JSON rekordu
-     * @param levelKey nazwa pola poziomu — różna dla meteo ("stopien") i hydro ("stopień")
+     * @param levelKey nazwa pola — różna dla meteo ("stopien") i hydro ("stopień")
      */
     private WarningLevel parseLevel(JsonObject obj, String levelKey) {
         String raw = getString(obj, levelKey);
@@ -356,13 +290,12 @@ public class WarningApiService {
             log.debug("Brak pola poziomu '{}' — domyślnie YELLOW", levelKey);
             return WarningLevel.YELLOW;
         }
-
         try {
             int lvl = Integer.parseInt(raw.trim());
             return switch (lvl) {
-                case 1  -> WarningLevel.YELLOW;
-                case 2  -> WarningLevel.ORANGE;
-                case 3  -> WarningLevel.RED;
+                case 1 -> WarningLevel.YELLOW;
+                case 2 -> WarningLevel.ORANGE;
+                case 3 -> WarningLevel.RED;
                 default -> {
                     log.debug("Nietypowy poziom ostrzeżenia '{}' = {} — domyślnie YELLOW", levelKey, lvl);
                     yield WarningLevel.YELLOW;
@@ -374,6 +307,7 @@ public class WarningApiService {
         }
     }
 
+    /** Parsuje pole daty z obiektu JSON. Zwraca null gdy pole jest puste lub nieparsowalne. */
     private LocalDateTime parseDateTime(JsonObject obj, String key) {
         String raw = getString(obj, key);
         if (raw == null) return null;
@@ -396,6 +330,7 @@ public class WarningApiService {
         return dateTime;
     }
 
+    /** Bezpiecznie czyta string z JSON; zwraca null dla pustych, "null" i braków. */
     private String getString(JsonObject obj, String key) {
         JsonElement el = obj.get(key);
         if (el == null || el.isJsonNull()) return null;
@@ -403,6 +338,7 @@ public class WarningApiService {
         return val.equals("null") || val.isEmpty() ? null : val;
     }
 
+    /** Bezpiecznie czyta int z JSON; zwraca defaultValue dla braków lub błędów. */
     private int getInt(JsonObject obj, String key, int defaultValue) {
         JsonElement el = obj.get(key);
         if (el == null || el.isJsonNull()) return defaultValue;

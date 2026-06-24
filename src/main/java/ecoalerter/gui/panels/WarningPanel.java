@@ -10,6 +10,7 @@ import ecoalerter.util.DateTimeUtil;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.BorderFactory;
+import javax.swing.Box;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
@@ -17,6 +18,8 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JTextArea;
+import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -25,31 +28,37 @@ import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagLayout;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Panel wyświetlający bieżące ostrzeżenia meteorologiczne i hydrologiczne.
  *
- * Wiersze tabeli są kolorowane wg poziomu ostrzeżenia (WarningLevel.getColor()),
- * co daje natychmiastową wizualną sygnalizację stanów alarmowych.
- * Filtr poziomu pozwala ograniczyć widok do ostrzeżeń od wybranego poziomu wzwyż.
+ * Wiersze tabeli są kolorowane wg poziomu ostrzeżenia, co daje natychmiastową
+ * wizualną sygnalizację stanów alarmowych. Filtr poziomu pozwala ograniczyć
+ * widok do ostrzeżeń od wybranego poziomu wzwyż.
  *
- * Gdy po filtrze nie ma żadnych ostrzeżeń do pokazania, tabela (nawet z nagłówkami)
- * jest skryta, a zamiast niej widoczne jest centrowane Microcopy — inne w zależności
- * od tego, czy to filtr wyklucza wszystko, czy faktycznie nie ma żadnych ostrzeżeń.
+ * Dwuklik na wierszu otwiera dialog ze szczegółami: pełną treścią komunikatu
+ * IMGW (pole {@code tresc} dla meteo, {@code przebieg} dla hydro) oraz biurem,
+ * które wydało ostrzeżenie (pole {@code biuro}).
  *
- * Implementuje NotificationService.AppEventListener — automatycznie odświeża
- * tabelę po zdarzeniu WARNINGS_REFRESHED, bez potrzeby manualnego klikania
- * przycisku odśwież.
+ * Gdy po filtrze nie ma żadnych ostrzeżeń do pokazania, tabela jest skryta,
+ * a zamiast niej widoczne jest centrowane Microcopy — inne w zależności
+ * od tego, czy to filtr wyklucza wszystko, czy faktycznie nie ma ostrzeżeń.
+ *
+ * Implementuje {@link NotificationService.AppEventListener} — automatycznie
+ * odświeża tabelę po zdarzeniu {@code WARNINGS_REFRESHED}.
  */
 public class WarningPanel extends JPanel implements NotificationService.AppEventListener {
-	private static final long serialVersionUID = -3840173255326655471L;
 
-	private static final Logger log = AppLogger.get(WarningPanel.class);
+    private static final long serialVersionUID = -3840173255326655471L;
+    private static final Logger log = AppLogger.get(WarningPanel.class);
 
     private static final String[] COLUMNS = {
             "Poziom", "Typ", "Zjawisko", "Prawdopodobieństwo (%)", "Wydano", "Ważne do"
@@ -65,13 +74,14 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
     private final NotificationService notificationService;
 
     private final JComboBox<FilterOption> filterCombo;
-    private final JButton                  refreshButton;
-    private final JLabel                   lastRefreshLabel;
-    private final JTable                   table;
-    private final WarningTableModel        tableModel;
-    private final JPanel                   centerPanel;
-    private final JLabel                   emptyStateLabel;
+    private final JButton                 refreshButton;
+    private final JLabel                  lastRefreshLabel;
+    private final JTable                  table;
+    private final WarningTableModel       tableModel;
+    private final JPanel                  centerPanel;
+    private final JLabel                  emptyStateLabel;
 
+    /** Opcje filtru poziomu w lewym górnym rogu paska narzędzi. */
     private enum FilterOption {
         ALL("Wszystkie", null),
         ORANGE_PLUS("Pomarańczowe i wyżej", WarningLevel.ORANGE),
@@ -81,7 +91,7 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
         final WarningLevel minLevel;
 
         FilterOption(String label, WarningLevel minLevel) {
-            this.label    = label;
+            this.label = label;
             this.minLevel = minLevel;
         }
 
@@ -93,6 +103,11 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
     // Konstruktor
     // -------------------------------------------------------------------------
 
+    /**
+     * @param warningService      serwis odczytu ostrzeżeń z repozytorium i API
+     * @param notificationService szyna zdarzeń — panel słucha
+     *                            {@code WARNINGS_REFRESHED}
+     */
     public WarningPanel(WarningService warningService, NotificationService notificationService) {
         super(new BorderLayout());
 
@@ -108,15 +123,28 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
         table.setRowHeight(24);
         table.setDefaultRenderer(Object.class, new WarningRowRenderer());
 
-        // Sortowanie po kliknięciu nagłówka. Prawdopodobieństwo (%) to liczba,
-        // Wydano/Ważne do to daty — bez komparatorów sortowałyby się alfabetycznie
-        // po znakach (np. "01.01.2027" przed "22.06.2026", co jest błędne chronologicznie).
+        // Sortowanie po kliknięciu nagłówka. Bez własnych komparatorów daty
+        // sortowałyby się leksykograficznie po znakach, a procenty alfabetycznie.
         TableRowSorter<WarningTableModel> sorter = new TableRowSorter<>(tableModel);
-        sorter.setComparator(0, TableSortUtil.warningSeverity()); // Poziom
-        sorter.setComparator(3, TableSortUtil.numeric());          // Prawdopodobieństwo (%)
-        sorter.setComparator(4, TableSortUtil.date());             // Wydano
-        sorter.setComparator(5, TableSortUtil.date());             // Ważne do
+        sorter.setComparator(0, TableSortUtil.warningSeverity());
+        sorter.setComparator(3, TableSortUtil.numeric());
+        sorter.setComparator(4, TableSortUtil.date());
+        sorter.setComparator(5, TableSortUtil.date());
         table.setRowSorter(sorter);
+
+        // Dwuklik w wierszu → dialog ze szczegółami.
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+                    int viewRow = table.rowAtPoint(e.getPoint());
+                    if (viewRow < 0) return;
+                    int modelRow = table.convertRowIndexToModel(viewRow);
+                    Warning w = tableModel.getWarningAt(modelRow);
+                    if (w != null) showWarningDetails(w);
+                }
+            }
+        });
 
         filterCombo.addActionListener(e -> applyFilterAndDisplay());
         refreshButton.addActionListener(e -> onRefreshFromApi());
@@ -130,15 +158,13 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
         toolBar.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
         toolBar.add(filterGroup, BorderLayout.WEST);
         toolBar.add(lastRefreshLabel, BorderLayout.EAST);
-
         add(toolBar, BorderLayout.NORTH);
 
         this.emptyStateLabel = new JLabel(" ");
         emptyStateLabel.setFont(emptyStateLabel.getFont().deriveFont(Font.PLAIN, 14f));
         emptyStateLabel.setForeground(Color.GRAY);
-
         JPanel emptyStatePanel = new JPanel(new GridBagLayout());
-        emptyStatePanel.add(emptyStateLabel); // GridBagLayout bez ograniczeń centruje pojedynczy komponent
+        emptyStatePanel.add(emptyStateLabel);
 
         this.centerPanel = new JPanel(new CardLayout());
         centerPanel.add(new JScrollPane(table), CARD_TABLE);
@@ -154,7 +180,7 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
     // -------------------------------------------------------------------------
 
     /**
-     * Wczytuje aktywne ostrzeżenia z repozytorium (bez odpytywania API IMGW)
+     * Wczytuje aktywne ostrzeżenia z repozytorium (bez odpytywania API)
      * i odświeża tabelę z zastosowaniem aktualnego filtru.
      */
     public void loadActiveWarnings() {
@@ -176,6 +202,7 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
         }.execute();
     }
 
+    /** Pobiera ostrzeżenia z API IMGW i zapisuje je w repozytorium. */
     private void onRefreshFromApi() {
         refreshButton.setEnabled(false);
         refreshButton.setText("Odświeżanie...");
@@ -190,7 +217,6 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
             protected void done() {
                 refreshButton.setEnabled(true);
                 refreshButton.setText("Odśwież");
-
                 try {
                     tableModel.setAllWarnings(get());
                     applyFilterAndDisplay();
@@ -205,9 +231,11 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
         }.execute();
     }
 
+    /** Stosuje wybrany filtr poziomu i przełącza widok między tabelą a empty-state. */
     private void applyFilterAndDisplay() {
         FilterOption selected = (FilterOption) filterCombo.getSelectedItem();
         WarningLevel minLevel = selected != null ? selected.minLevel : null;
+
         tableModel.applyFilter(minLevel);
 
         if (tableModel.getRowCount() == 0) {
@@ -221,10 +249,6 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
      * Przełącza widok na centrowane Microcopy. Treść zależy od przyczyny —
      * brak jakichkolwiek aktywnych ostrzeżeń to inna sytuacja niż wybrany
      * filtr wykluczający wszystkie istniejące ostrzeżenia.
-     *
-     * @param noWarningsAtAll true gdy nie ma żadnych aktywnych ostrzeżeń
-     *                        (niezależnie od filtru), false gdy to filtr
-     *                        jest przyczyną pustego wyniku
      */
     private void showEmptyState(boolean noWarningsAtAll) {
         emptyStateLabel.setText(noWarningsAtAll
@@ -233,21 +257,97 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
         ((CardLayout) centerPanel.getLayout()).show(centerPanel, CARD_EMPTY);
     }
 
+    /** Przełącza widok z powrotem na tabelę ostrzeżeń. */
     private void showTableState() {
         ((CardLayout) centerPanel.getLayout()).show(centerPanel, CARD_TABLE);
+    }
+
+    // -------------------------------------------------------------------------
+    // Dialog szczegółów (dwuklik)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Pokazuje dialog ze szczegółami ostrzeżenia: zjawisko, poziom, typ,
+     * biuro wydające, daty + pełna treść komunikatu w przewijanym polu.
+     *
+     * Treść jest pokazywana w {@link JTextArea} z włączonym word-wrap —
+     * komunikaty IMGW potrafią być długimi akapitami, więc zwykły
+     * {@code JLabel} się tu nie sprawdzi.
+     */
+    private void showWarningDetails(Warning w) {
+        // Górna sekcja: zjawisko jako nagłówek + metadane (poziom/typ/biuro/daty).
+        JPanel header = new JPanel();
+        header.setLayout(new javax.swing.BoxLayout(header, javax.swing.BoxLayout.Y_AXIS));
+        header.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
+
+        JLabel phenomLabel = new JLabel(
+                w.getPhenomenon() != null ? w.getPhenomenon() : "Ostrzeżenie");
+        phenomLabel.setFont(phenomLabel.getFont().deriveFont(Font.BOLD, 15f));
+        phenomLabel.setAlignmentX(LEFT_ALIGNMENT);
+        header.add(phenomLabel);
+        header.add(Box.createVerticalStrut(6));
+
+        String levelText = w.getLevel() != null ? w.getLevel().getDisplayName() : "—";
+        String typeText  = w.getType()  != null ? w.getType().name()              : "—";
+        header.add(metaLine("Poziom: " + levelText + "    Typ: " + typeText));
+
+        String office = (w.getOffice() != null && !w.getOffice().isBlank())
+                ? w.getOffice()
+                : "nie podano";
+        header.add(metaLine("Wydane przez: " + office));
+
+        String issued = w.getIssuedAt() != null
+                ? DateTimeUtil.toDisplayString(w.getIssuedAt())
+                : "—";
+        String valid = w.getValidUntil() != null
+                ? DateTimeUtil.toDisplayString(w.getValidUntil())
+                : "bezterminowo";
+        header.add(metaLine("Wydano: " + issued + "    Ważne do: " + valid));
+
+        // Środek: pełna treść w przewijanym text area (read-only, word-wrap).
+        JTextArea contentArea = new JTextArea(
+                w.getMessage() != null && !w.getMessage().isBlank()
+                        ? w.getMessage()
+                        : "(brak treści w komunikacie IMGW)");
+        contentArea.setEditable(false);
+        contentArea.setLineWrap(true);
+        contentArea.setWrapStyleWord(true);
+        contentArea.setMargin(new java.awt.Insets(8, 10, 8, 10));
+        contentArea.setBackground(new Color(0xFAFAFA));
+        contentArea.setCaretPosition(0); // przewiń na początek, nie koniec
+
+        JScrollPane scroll = new JScrollPane(contentArea);
+        scroll.setPreferredSize(new Dimension(560, 280));
+        scroll.setBorder(BorderFactory.createLineBorder(new Color(0xDDDDDD)));
+
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(header, BorderLayout.NORTH);
+        panel.add(scroll, BorderLayout.CENTER);
+
+        JOptionPane.showMessageDialog(this, panel,
+                "Szczegóły ostrzeżenia", JOptionPane.PLAIN_MESSAGE);
+    }
+
+    /** Linia metadanych w nagłówku dialogu — wyrównana do lewej, w jednym fontem. */
+    private JLabel metaLine(String text) {
+        JLabel lbl = new JLabel(text);
+        lbl.setAlignmentX(LEFT_ALIGNMENT);
+        return lbl;
     }
 
     // -------------------------------------------------------------------------
     // NotificationService.AppEventListener
     // -------------------------------------------------------------------------
 
+    /**
+     * Reaguje na {@code WARNINGS_REFRESHED} — odświeża tabelę i znacznik
+     * czasu ostatniego odświeżenia.
+     */
     @Override
     @SuppressWarnings("unchecked")
     public void onEvent(NotificationService.AppEvent event) {
         if (event.getType() != NotificationService.EventType.WARNINGS_REFRESHED) return;
 
-        // NotificationService.onWarningsRefreshed zawsze publikuje List<Warning>
-        // (może być pusta, ale typ jest stały — patrz NotificationService.java)
         List<Warning> warnings = (List<Warning>) event.getPayload();
         tableModel.setAllWarnings(warnings);
         applyFilterAndDisplay();
@@ -255,7 +355,8 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
     }
 
     /**
-     * Wyrejestrowuje panel z NotificationService — wywołać przy zamykaniu zakładki/aplikacji.
+     * Wyrejestrowuje panel z {@link NotificationService}.
+     * Wywołać przy zamykaniu zakładki/aplikacji.
      */
     public void dispose() {
         notificationService.removeListener(this);
@@ -265,16 +366,20 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
     // Model tabeli
     // =========================================================================
 
+    /** Model tabeli — trzyma pełną listę i przefiltrowaną listę osobno. */
     private static class WarningTableModel extends AbstractTableModel {
-		private static final long serialVersionUID = 1628584136547442592L;
-		
-		private List<Warning> allWarnings      = new ArrayList<>();
+
+        private static final long serialVersionUID = 1628584136547442592L;
+
+        private List<Warning> allWarnings      = new ArrayList<>();
         private List<Warning> filteredWarnings = new ArrayList<>();
 
+        /** Ustawia pełną listę ostrzeżeń (przed filtrowaniem). */
         void setAllWarnings(List<Warning> warnings) {
             this.allWarnings = warnings != null ? new ArrayList<>(warnings) : new ArrayList<>();
         }
 
+        /** Stosuje filtr poziomu i wyzwala odświeżenie tabeli. */
         void applyFilter(WarningLevel minLevel) {
             if (minLevel == null) {
                 filteredWarnings = new ArrayList<>(allWarnings);
@@ -286,40 +391,34 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
             fireTableDataChanged();
         }
 
+        /** Zwraca ostrzeżenie z aktualnie wyświetlanej (przefiltrowanej) listy. */
         Warning getWarningAt(int row) {
             return filteredWarnings.get(row);
         }
 
         /**
          * Czy nie ma żadnych aktywnych ostrzeżeń w ogóle (przed filtrowaniem).
-         * Odróżnia "brak ostrzeżeń" od "filtr wykluczył wszystkie".
+         * Odróżnia „brak ostrzeżeń" od „filtr wykluczył wszystkie".
          */
         boolean isAllEmpty() {
             return allWarnings.isEmpty();
         }
 
-        @Override
-        public int getRowCount() { return filteredWarnings.size(); }
-
-        @Override
-        public int getColumnCount() { return COLUMNS.length; }
-
-        @Override
-        public String getColumnName(int column) { return COLUMNS[column]; }
-
-        @Override
-        public boolean isCellEditable(int row, int column) { return false; }
+        @Override public int     getRowCount()                          { return filteredWarnings.size(); }
+        @Override public int     getColumnCount()                       { return COLUMNS.length; }
+        @Override public String  getColumnName(int column)              { return COLUMNS[column]; }
+        @Override public boolean isCellEditable(int row, int column)    { return false; }
 
         @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
             Warning w = filteredWarnings.get(rowIndex);
             return switch (columnIndex) {
-                case 0  -> w.getLevel() != null ? w.getLevel().getDisplayName() : "—";
-                case 1  -> w.getType()  != null ? w.getType().name()           : "—";
-                case 2  -> w.getPhenomenon() != null ? w.getPhenomenon()        : "—";
-                case 3  -> w.getProbability() >= 0 ? w.getProbability() + "%"   : "—";
-                case 4  -> DateTimeUtil.toDisplayString(w.getIssuedAt());
-                case 5  -> w.getValidUntil() != null
+                case 0 -> w.getLevel() != null ? w.getLevel().getDisplayName() : "—";
+                case 1 -> w.getType()  != null ? w.getType().name()             : "—";
+                case 2 -> w.getPhenomenon() != null ? w.getPhenomenon()         : "—";
+                case 3 -> w.getProbability() >= 0 ? w.getProbability() + "%"     : "—";
+                case 4 -> DateTimeUtil.toDisplayString(w.getIssuedAt());
+                case 5 -> w.getValidUntil() != null
                         ? DateTimeUtil.toDisplayString(w.getValidUntil())
                         : "bezterminowo";
                 default -> "";
@@ -331,13 +430,15 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
     // Renderer wierszy — kolorowanie wg poziomu ostrzeżenia
     // =========================================================================
 
+    /** Renderer kolorujący tło wiersza pastelową wersją koloru poziomu ostrzeżenia. */
     private class WarningRowRenderer extends DefaultTableCellRenderer {
-		private static final long serialVersionUID = 6773993286828545130L;
 
-		@Override
+        private static final long serialVersionUID = 6773993286828545130L;
+
+        @Override
         public Component getTableCellRendererComponent(JTable tbl, Object value,
-                                                        boolean isSelected, boolean hasFocus,
-                                                        int row, int column) {
+                                                       boolean isSelected, boolean hasFocus,
+                                                       int row, int column) {
             Component c = super.getTableCellRendererComponent(
                     tbl, value, isSelected, hasFocus, row, column);
 
@@ -345,7 +446,6 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
             Color levelColor = warning.getDisplayColor();
 
             if (levelColor != null && !isSelected) {
-                // Pastelowa wersja koloru jako tło wiersza — tekst zostaje czarny dla czytelności
                 c.setBackground(blend(levelColor, Color.WHITE, 0.75f));
                 c.setForeground(Color.BLACK);
             } else if (!isSelected) {
@@ -356,6 +456,7 @@ public class WarningPanel extends JPanel implements NotificationService.AppEvent
             return c;
         }
 
+        /** Liniowa interpolacja dwóch kolorów — używana do pastelizacji koloru poziomu. */
         private Color blend(Color base, Color with, float ratio) {
             int r = (int) (base.getRed()   * (1 - ratio) + with.getRed()   * ratio);
             int g = (int) (base.getGreen() * (1 - ratio) + with.getGreen() * ratio);

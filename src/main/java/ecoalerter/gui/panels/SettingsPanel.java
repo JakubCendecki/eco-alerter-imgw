@@ -487,7 +487,7 @@ public class SettingsPanel extends JPanel {
 
         // --- Rząd 2: cleanup wszystkiego ---
         JPanel allRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        JButton clearAllButton = new JButton("Wyczyść wszystkie dane pomiarowe...");
+        JButton clearAllButton = new JButton("Wyczyść wszystkie dane pomiarowe");
         clearAllButton.addActionListener(e -> onClearAllRequested());
 
         allRow.add(clearAllButton);
@@ -514,8 +514,7 @@ public class SettingsPanel extends JPanel {
     private void onClearAllRequested() {
         int confirm = JOptionPane.showConfirmDialog(this,
                 "Czy na pewno chcesz usunąć WSZYSTKIE stacje wraz z ich danymi\n" +
-                "pomiarowymi i ostrzeżeniami? Operacji nie można cofnąć.\n\n" +
-                "Ustawienia aplikacji pozostaną nietknięte.",
+                "pomiarowymi i ostrzeżeniami? Tej operacji nie można cofnąć.\n\n",
                 "Potwierdzenie usunięcia wszystkich danych",
                 JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
         if (confirm != JOptionPane.YES_OPTION) return;

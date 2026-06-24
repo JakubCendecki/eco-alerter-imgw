@@ -113,22 +113,44 @@ public class DatabaseRepository implements DataRepository {
      */
     @Override
     public void clearAllData() throws PersistenceException {
-        try (Connection conn = pool.getConnection()) {
-            conn.setAutoCommit(false);
-            try (java.sql.Statement st = conn.createStatement()) {
-                st.executeUpdate("DELETE FROM meteo_data");
-                st.executeUpdate("DELETE FROM hydro_data");
-                st.executeUpdate("DELETE FROM warnings");
-                st.executeUpdate("DELETE FROM stations");
-                conn.commit();
-                log.info("Wyczyszczono wszystkie dane (DB)");
+    	try {
+    		String sql = "DELETE FROM meteo_data";
+            try (Connection conn = pool.getConnection();
+            	PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.executeUpdate();
             } catch (SQLException e) {
-                conn.rollback();
-                throw new PersistenceException("Błąd czyszczenia danych w DB", e);
+                throw new PersistenceException("Błąd czyszczenia danych meteo w DB", e);
             }
-        } catch (SQLException e) {
-            throw new PersistenceException("Błąd pobrania połączenia do czyszczenia DB", e);
-        }
+            
+            sql = "DELETE FROM hydro_data";
+            try (Connection conn = pool.getConnection();
+            	PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new PersistenceException("Błąd czyszczenia danych hydro w DB", e);
+            }
+            
+            sql = "DELETE FROM warnings";
+            try (Connection conn = pool.getConnection();
+            	PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new PersistenceException("Błąd czyszczenia danych o ostrzeżeniach w DB", e);
+            }
+            
+            sql = "DELETE FROM stations";
+            try (Connection conn = pool.getConnection();
+            	PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new PersistenceException("Błąd czyszczenia danych o stacjach w DB", e);
+            }
+
+            log.info("Wyczyszczono wszystkie dane (DB)");
+    	} catch (Exception e) {
+    		throw new PersistenceException("Błąd czyszczenie danych w DB", e);
+    	}
+    	
     }
     
     /**
@@ -515,11 +537,12 @@ public class DatabaseRepository implements DataRepository {
     public void saveWarning(Warning warning) throws PersistenceException {
         String sql = """
                 INSERT INTO warnings
-                    (id, station_id, level, type, phenomenon, probability, message, issued_at, valid_until)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, station_id, level, type, phenomenon, probability, message, office, issued_at, valid_until)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     level       = excluded.level,
                     message     = excluded.message,
+                    office      = excluded.office,
                     valid_until = excluded.valid_until
                 """;
 
@@ -557,7 +580,7 @@ public class DatabaseRepository implements DataRepository {
     @Override
     public List<Warning> findActiveWarnings() throws PersistenceException {
         String sql = """
-                SELECT id, station_id, level, type, phenomenon, probability, message, issued_at, valid_until
+                SELECT id, station_id, level, type, phenomenon, probability, message, office, issued_at, valid_until
                 FROM warnings
                 WHERE valid_until IS NULL OR valid_until > ?
                 ORDER BY
@@ -675,8 +698,9 @@ public class DatabaseRepository implements DataRepository {
         ps.setString(5, w.getPhenomenon());
         ps.setInt   (6, w.getProbability());
         ps.setString(7, w.getMessage());
-        ps.setString(8, DateTimeUtil.toDbString(w.getIssuedAt()));
-        ps.setString(9, DateTimeUtil.toDbString(w.getValidUntil()));
+        ps.setString(8, w.getOffice());
+        ps.setString(9, DateTimeUtil.toDbString(w.getIssuedAt()));
+        ps.setString(10, DateTimeUtil.toDbString(w.getValidUntil()));
     }
 
     /**
@@ -768,6 +792,7 @@ public class DatabaseRepository implements DataRepository {
             w.setPhenomenon(rs.getString("phenomenon"));
             w.setProbability(rs.getInt("probability"));
             w.setMessage(rs.getString("message"));
+            w.setOffice(rs.getString("office"));
             w.setIssuedAt(DateTimeUtil.parse(rs.getString("issued_at")).orElse(null));
             w.setValidUntil(DateTimeUtil.parse(rs.getString("valid_until")).orElse(null));
             list.add(w);
