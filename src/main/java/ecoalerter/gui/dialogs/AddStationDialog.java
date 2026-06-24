@@ -43,8 +43,9 @@ import java.util.Optional;
  * przez StationService.addStation() lub StationService.editStation().
  */
 public class AddStationDialog extends JDialog {
-
-    private static final int MIN_INTERVAL_MINUTES = 5;
+	private static final long serialVersionUID = -4919131662509912898L;
+	
+	private static final int MIN_INTERVAL_MINUTES = 5;
     private static final int MAX_INTERVAL_MINUTES = 30;
     private static final int DEFAULT_INTERVAL_MINUTES = 5;
 

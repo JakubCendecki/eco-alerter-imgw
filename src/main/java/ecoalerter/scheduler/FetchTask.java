@@ -157,10 +157,17 @@ public class FetchTask implements Runnable {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Pobieranie meteo
-    // -------------------------------------------------------------------------
-
+    /**
+     * Pojedynczy cykl pobierania danych meteo dla stacji obsługiwanej przez ten FetchTask.
+     *
+     * Sprawdza nadrzędny przełącznik {@code DataTypeConfig.isMeteoEnabled()} — jeśli kategoria
+     * jest globalnie wyłączona, pomija pobranie w ogóle (nie obciąża API). Indywidualne pola
+     * (temperatura, wiatr, opady) NIE są filtrowane przed zapisem — scheduler zapisuje wszystko,
+     * co dostarczyło API, a o widoczności kolumn decyduje warstwa widoku (DataViewPanel).
+     *
+     * @throws ApiException         gdy żądanie HTTP się nie powiedzie
+     * @throws PersistenceException gdy zapis do repozytorium się nie powiedzie
+     */
     private void runMeteo() throws ApiException, PersistenceException {
         if (!dataTypeConfig.isMeteoEnabled()) {
             log.debug("Dane meteo wyłączone w konfiguracji — pomijam stację {}", station.getId());
@@ -177,7 +184,8 @@ public class FetchTask implements Runnable {
         MeteoData data = dataOpt.get();
 
         if (!data.hasAnyMeasurement()) {
-            log.debug("Wszystkie pola meteo wyłączone — pomijam zapis dla {}", station.getId());
+            log.debug("API nie zwróciło żadnych pomiarów meteo dla {} — pomijam zapis",
+                    station.getId());
             return;
         }
 
@@ -185,10 +193,15 @@ public class FetchTask implements Runnable {
         log.info("Zapisano meteo: {}", data.toDisplayString());
     }
 
-    // -------------------------------------------------------------------------
-    // Pobieranie hydro
-    // -------------------------------------------------------------------------
-
+    /**
+     * Pojedynczy cykl pobierania danych hydro dla stacji obsługiwanej przez ten FetchTask.
+     *
+     * Polityka zapisu identyczna jak w {@link #runMeteo()} — pełne pola zapisywane bez
+     * filtrowania, GUI decyduje o widoczności kolumn na bieżąco z DataTypeConfig.
+     *
+     * @throws ApiException         gdy żądanie HTTP się nie powiedzie
+     * @throws PersistenceException gdy zapis do repozytorium się nie powiedzie
+     */
     private void runHydro() throws ApiException, PersistenceException {
         if (!dataTypeConfig.isHydroEnabled()) {
             log.debug("Dane hydro wyłączone w konfiguracji — pomijam stację {}", station.getId());
@@ -205,7 +218,8 @@ public class FetchTask implements Runnable {
         HydroData data = dataOpt.get();
 
         if (!data.hasAnyMeasurement()) {
-            log.debug("Wszystkie pola hydro wyłączone — pomijam zapis dla {}", station.getId());
+            log.debug("API nie zwróciło żadnych pomiarów hydro dla {} — pomijam zapis",
+                    station.getId());
             return;
         }
 

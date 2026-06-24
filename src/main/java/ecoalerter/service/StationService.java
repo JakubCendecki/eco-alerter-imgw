@@ -99,6 +99,39 @@ public class StationService {
         log.info("Usunięto stację {} [{}]", stationId, type);
     }
 
+    /**
+     * Usuwa WSZYSTKIE stacje wraz z ich danymi pomiarowymi i ostrzeżeniami.
+     *
+     * Sekwencja:
+     * <ol>
+     *   <li>Pobranie listy wszystkich stacji z repozytorium (źródło prawdy
+     *       o tym, co jest zaplanowane).</li>
+     *   <li>Anulowanie zadań schedulera dla każdej z nich — bez tego pula wątków
+     *       nadal odpytywałaby API dla rekordów, które zaraz znikną z dysku.</li>
+     *   <li>Wyczyszczenie repozytorium ({@link DataRepository#clearAllData()}) —
+     *       usuwa pliki danych, plik stacji i pliki ostrzeżeń.</li>
+     * </ol>
+     *
+     * Wywołujący (typowo SettingsPanel) odpowiada za uzyskanie potwierdzenia
+     * od użytkownika i za odświeżenie GUI (przez {@code NotificationService}
+     * albo bezpośrednie reload paneli).
+     *
+     * @throws PersistenceException gdy operacja na repozytorium się nie powiedzie
+     */
+    public void clearAll() throws PersistenceException {
+        List<Station> all = repository.findAllStations();
+        int count = all.size();
+
+        for (Station s : all) {
+            scheduler.unscheduleStation(s.getId());
+        }
+
+        repository.clearAllData();
+
+        AppLogger.logConfigChange("clear.all", count + " stations", "0 stations");
+        log.info("Wyczyszczono wszystko: {} stacji + dane pomiarowe + ostrzeżenia", count);
+    }
+
     // -------------------------------------------------------------------------
     // Edycja stacji (nazwa, interwał, aktywność — nie ID i typ, które są
     // częścią identyfikatora rekordu)

@@ -382,13 +382,17 @@ public class FileRepository implements DataRepository {
     // =========================================================================
 
     /**
-     * Usuwa wszystkie pliki danych pomiarowych (po jednym na stację) oraz
-     * wszystkie pliki ostrzeżeń. Stacje (stations.json) i ustawienia aplikacji
-     * pozostają nietknięte. Wywołujący odpowiada za potwierdzenie od użytkownika.
+     * Usuwa wszystkie pliki danych pomiarowych (po jednym na stację), wszystkie
+     * pliki ostrzeżeń ORAZ plik stations.json. Ustawienia aplikacji
+     * (app.properties) pozostają nietknięte. Wywołujący odpowiada za
+     * potwierdzenie od użytkownika i za zsynchronizowanie schedulera
+     * (zadania dla skasowanych stacji muszą zostać anulowane — patrz
+     * {@link ecoalerter.service.StationService#clearAll()}).
      *
-     * Iteruje po wszystkich stacjach (aktywne + nieaktywne), żeby usunąć też
-     * pliki stacji wyłączonych. Pliki, których nie da się usunąć, są logowane
-     * jako warning, ale operacja kontynuuje.
+     * Kolejność jest istotna: najpierw iterujemy po stacjach, żeby zlokalizować
+     * pliki danych (PathResolver buduje ścieżkę z {@code id+name} stacji);
+     * dopiero potem usuwamy stations.json — inaczej stracilibyśmy informację,
+     * gdzie szukać plików danych dla wyłączonych stacji.
      */
     @Override
     public void clearAllData() throws PersistenceException {
@@ -396,8 +400,8 @@ public class FileRepository implements DataRepository {
         int hydroDeleted    = 0;
         int warningsDeleted = 0;
 
-        // Pliki pomiarowe — po jednym pliku na stację. Iterujemy po WSZYSTKICH
-        // stacjach (aktywne + nieaktywne), żeby nic nie zostało osierocone.
+        // 1. Pliki pomiarowe — po jednym pliku na stację. Iterujemy po WSZYSTKICH
+        //    stacjach (aktywne + nieaktywne), żeby nic nie zostało osierocone.
         List<Station> all = findAllStations();
         for (Station s : all) {
             Path file = (s.getType() == StationType.METEO)
@@ -413,10 +417,7 @@ public class FileRepository implements DataRepository {
             }
         }
 
-        // Pliki ostrzeżeń — wszystkie .json w katalogu warnings. Nazwa pliku
-        // zawiera datę, więc nie da się ich znaleźć inaczej niż przez listing
-        // katalogu. „dummy" jako parametr daty jest tu tylko po to, żeby
-        // wyciągnąć katalog rodzica — nazwa pliku nie ma znaczenia.
+        // 2. Pliki ostrzeżeń — wszystkie .json w katalogu warnings.
         Path probe = pathResolver.resolveWarningsFile("dummy", "json");
         Path warningsDir = probe.getParent();
         if (warningsDir != null && Files.isDirectory(warningsDir)) {
@@ -438,7 +439,18 @@ public class FileRepository implements DataRepository {
             }
         }
 
-        log.info("Wyczyszczono wszystkie dane: meteo={}, hydro={}, warnings={}",
+        // 3. Plik stations.json — usuwamy na końcu, gdy pliki danych są już skasowane.
+        boolean stationsDeleted = false;
+        Path stationsFile = pathResolver.getStationsConfigFile();
+        try {
+            stationsDeleted = Files.deleteIfExists(stationsFile);
+        } catch (IOException e) {
+            log.warn("Nie udało się usunąć pliku stacji {}: {}",
+                    stationsFile, e.getMessage());
+        }
+
+        log.info("Wyczyszczono wszystkie dane: stacje={} ({}), meteo={}, hydro={}, warnings={}",
+                all.size(), stationsDeleted ? "plik usunięty" : "plik nie istniał",
                 meteoDeleted, hydroDeleted, warningsDeleted);
     }
 

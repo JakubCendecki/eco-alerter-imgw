@@ -2,7 +2,7 @@ package ecoalerter.api;
 
 /**
  * Stałe zawierające wszystkie endpointy publicznego REST API IMGW-PIB.
- * Dokumentacja: https://danepubliczne.imgw.pl
+ * Dokumentacja: https://danepubliczne.imgw.pl/pl/apiinfo
 */
 public final class ApiEndpoints {
 

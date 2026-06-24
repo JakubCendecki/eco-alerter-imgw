@@ -3,6 +3,8 @@ package ecoalerter.gui.panels;
 import ecoalerter.config.AppConfig;
 import ecoalerter.config.PersistenceMode;
 import ecoalerter.service.DataCollectionService;
+import ecoalerter.service.NotificationService;
+import ecoalerter.service.StationService;
 import ecoalerter.util.AppLogger;
 import org.apache.logging.log4j.Logger;
 
@@ -46,14 +48,17 @@ import java.awt.FlowLayout;
  * (revert) bez zapisu.
  */
 public class SettingsPanel extends JPanel {
+	private static final long serialVersionUID = 2781647122217999954L;
 
-    private static final Logger log = AppLogger.get(SettingsPanel.class);
+	private static final Logger log = AppLogger.get(SettingsPanel.class);
 
     private static final int MIN_INTERVAL_MINUTES = 5;
     private static final int MAX_INTERVAL_MINUTES = 30;
 
     private final AppConfig              config;
     private final DataCollectionService  dataCollectionService;
+    private final StationService         stationService;
+    private final NotificationService    notificationService;
 
     private JRadioButton fileModeRadio;
     private JRadioButton dbModeRadio;
@@ -84,12 +89,23 @@ public class SettingsPanel extends JPanel {
     /**
      * @param config                konfiguracja aplikacji — czytana i zapisywana
      *                              przez tę zakładkę
-     * @param dataCollectionService serwis danych — wykorzystywany m.in.
-     *                              do czyszczenia historii
+     * @param dataCollectionService serwis danych — używany przez „Usuń dane
+     *                              starsze niż..."
+     * @param stationService        serwis stacji — używany przez „Wyczyść
+     *                              wszystkie dane" (musi usunąć też stacje
+     *                              i zatrzymać scheduler)
+     * @param notificationService   szyna zdarzeń — po wyczyszczeniu danych
+     *                              wysyłamy {@code STATIONS_CHANGED}, żeby
+     *                              inne panele odświeżyły swoje widoki
      */
-    public SettingsPanel(AppConfig config, DataCollectionService dataCollectionService) {
+    public SettingsPanel(AppConfig config,
+                         DataCollectionService dataCollectionService,
+                         StationService stationService,
+                         NotificationService notificationService) {
         this.config                = config;
         this.dataCollectionService = dataCollectionService;
+        this.stationService        = stationService;
+        this.notificationService   = notificationService;
 
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -232,13 +248,9 @@ public class SettingsPanel extends JPanel {
         JButton applyButton = new JButton("Zastosuj");
         applyButton.addActionListener(e -> onApplyDataTypeConfig());
 
-        JLabel note = new JLabel("Zmiana stosowana natychmiast — bez restartu aplikacji.");
-        note.setFont(note.getFont().deriveFont(Font.ITALIC, 11f));
-        note.setForeground(java.awt.Color.GRAY);
 
         JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 2));
         buttonRow.add(applyButton);
-        buttonRow.add(note);
 
         content.add(grid);
         content.add(buttonRow);
@@ -295,8 +307,7 @@ public class SettingsPanel extends JPanel {
         }
 
         JOptionPane.showMessageDialog(this,
-                "Zakres monitorowanych danych zaktualizowany.\n" +
-                "Widoczne kolumny w zakładce „Dane\" zostały odświeżone.",
+                "Zakres monitorowanych danych zaktualizowany.\n",
                 "Zastosowano", JOptionPane.INFORMATION_MESSAGE);
     }
 
@@ -421,6 +432,15 @@ public class SettingsPanel extends JPanel {
                 "Zastosowano", JOptionPane.INFORMATION_MESSAGE);
     }
 
+    // -------------------------------------------------------------------------
+    // Sekcja: logowanie (zastosowanie natychmiastowe)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Buduje sekcję z wyborem poziomu logowania.
+     * Zmiana jest stosowana natychmiast przez {@link AppLogger#setRootLevel(String)}
+     * — nie wymaga restartu, nie wymaga przycisku „Zastosuj".
+     */
     private JPanel buildLoggingSection() {
         JPanel panel = titledPanel("Dziennik zdarzeń", new GridLayout(1, 2, 8, 4));
 
@@ -443,6 +463,15 @@ public class SettingsPanel extends JPanel {
         return panel;
     }
 
+    // -------------------------------------------------------------------------
+    // Sekcja: czyszczenie historii danych
+    // -------------------------------------------------------------------------
+
+    /**
+     * Buduje sekcję czyszczenia z dwoma operacjami:
+     * cleanup wg wieku (zachowaj N dni) i cleanup wszystkiego (z dwuetapowym
+     * potwierdzeniem).
+     */
     private JPanel buildCleanupSection() {
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
@@ -458,14 +487,10 @@ public class SettingsPanel extends JPanel {
 
         // --- Rząd 2: cleanup wszystkiego ---
         JPanel allRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        JButton clearAllButton = new JButton("Wyczyść wszystkie dane...");
+        JButton clearAllButton = new JButton("Wyczyść wszystkie dane pomiarowe...");
         clearAllButton.addActionListener(e -> onClearAllRequested());
-        JLabel allNote = new JLabel(
-                "Usuwa całą historię pomiarów i ostrzeżenia. Lista stacji pozostaje bez zmian.");
-        allNote.setFont(allNote.getFont().deriveFont(Font.ITALIC, 11f));
-        allNote.setForeground(java.awt.Color.GRAY);
+
         allRow.add(clearAllButton);
-        allRow.add(allNote);
 
         content.add(byAgeRow);
         content.add(allRow);
@@ -473,15 +498,24 @@ public class SettingsPanel extends JPanel {
         return wrapTitled("Czyszczenie historii danych", content);
     }
 
+    /**
+     * Obsługa „Wyczyść wszystkie dane...". Pyta o potwierdzenie dwuetapowo
+     * — najpierw Yes/No, potem trzeba wpisać słowo „USUŃ" — żeby uniknąć
+     * przypadkowego skasowania wszystkiego.
+     *
+     * Operacja kasuje WSZYSTKO oprócz ustawień aplikacji: stacje, ich
+     * dane pomiarowe, ostrzeżenia, a także zatrzymuje wszystkie zaplanowane
+     * fetchy w schedulerze (bez tego pula wątków próbowałaby dalej odpytywać
+     * API dla nieistniejących już stacji). Po sukcesie odpala
+     * {@link #onDataTypeConfigChanged} (czyszczenie zakładki Dane) oraz
+     * {@code notifyStationsChanged()} (StationManagerPanel i DataViewPanel
+     * przeładowują listę stacji).
+     */
     private void onClearAllRequested() {
-        // Dwuetapowe potwierdzenie — operacja jest nieodwracalna i kasuje
-        // potencjalnie miesiące danych. Pierwsze okno ostrzega o skutkach,
-        // drugie wymaga wpisania słowa „USUŃ" — żeby uniknąć przypadkowego
-        // kliknięcia OK przez przyzwyczajenie.
         int confirm = JOptionPane.showConfirmDialog(this,
-                "Czy na pewno chcesz usunąć WSZYSTKIE zapisane dane pomiarowe\n" +
-                "i ostrzeżenia? Operacji nie można cofnąć.\n\n" +
-                "Lista stacji oraz ustawienia aplikacji pozostaną nietknięte.",
+                "Czy na pewno chcesz usunąć WSZYSTKIE stacje wraz z ich danymi\n" +
+                "pomiarowymi i ostrzeżeniami? Operacji nie można cofnąć.\n\n" +
+                "Ustawienia aplikacji pozostaną nietknięte.",
                 "Potwierdzenie usunięcia wszystkich danych",
                 JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
         if (confirm != JOptionPane.YES_OPTION) return;
@@ -500,7 +534,12 @@ public class SettingsPanel extends JPanel {
         new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() throws Exception {
-                dataCollectionService.clearAllData();
+                // stationService.clearAll() ogarnia:
+                //   - anulowanie zadań w schedulerze dla każdej stacji,
+                //   - skasowanie plików pomiarów (meteo, hydro),
+                //   - skasowanie plików ostrzeżeń,
+                //   - skasowanie stations.json.
+                stationService.clearAll();
                 return null;
             }
 
@@ -508,17 +547,22 @@ public class SettingsPanel extends JPanel {
             protected void done() {
                 try {
                     get();
-                    log.info("Wszystkie dane pomiarowe i ostrzeżenia zostały wyczyszczone");
+                    log.info("Wszystkie stacje i dane zostały wyczyszczone");
 
-                    // Po wyczyszczeniu danych zakładka „Dane" pokazywałaby
-                    // stale starą zawartość tabeli — odświeżamy ją tym samym
-                    // callbackiem, co zmiana zakresu monitorowanych danych.
+                    // Po wyczyszczeniu stacji — StationManagerPanel i DataViewPanel
+                    // muszą przeładować swoją listę stacji. Wysyłka STATIONS_CHANGED
+                    // załatwia oba (DataViewPanel już to słucha, StationManagerPanel
+                    // — po fix-ie w onEvent też).
+                    notificationService.notifyStationsChanged();
+
+                    // Dodatkowo czyszczenie aktualnej zawartości tabeli Dane —
+                    // to samo wywołanie co po zmianie zakresu monitorowanych danych.
                     if (onDataTypeConfigChanged != null) {
                         onDataTypeConfigChanged.run();
                     }
 
                     JOptionPane.showMessageDialog(SettingsPanel.this,
-                            "Wszystkie dane pomiarowe i ostrzeżenia zostały usunięte.",
+                            "Wszystkie stacje wraz z ich danymi i ostrzeżeniami zostały usunięte.",
                             "Zakończono", JOptionPane.INFORMATION_MESSAGE);
                 } catch (Exception e) {
                     log.error("Błąd czyszczenia wszystkich danych: {}", e.getMessage(), e);
@@ -530,6 +574,10 @@ public class SettingsPanel extends JPanel {
         }.execute();
     }
 
+    /**
+     * Obsługa „Usuń dane starsze niż...". Pyta o potwierdzenie, a operacja
+     * leci przez SwingWorker — nie blokuje EDT przy dużej historii.
+     */
     private void onCleanupRequested() {
         int days = (Integer) cleanupDaysSpinner.getValue();
 
@@ -563,13 +611,18 @@ public class SettingsPanel extends JPanel {
         }.execute();
     }
 
+    // -------------------------------------------------------------------------
+    // Sekcja: reset ustawień (wymaga restartu)
+    // -------------------------------------------------------------------------
+
+    /** Buduje sekcję z przyciskiem resetującym wszystkie ustawienia do wartości domyślnych. */
     private JPanel buildResetSection() {
         JPanel content = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 4));
 
-        JButton resetButton = new JButton("Resetuj ustawienia");
+        JButton resetButton = new JButton("Przywróć ustawienia domyślne");
         resetButton.addActionListener(e -> onResetSettings());
 
-        JLabel note = new JLabel("Przywraca domyślne ustawienia i zamyka aplikację — wymaga ponownego uruchomienia.");
+        JLabel note = new JLabel("Wymaga restartu aplikacji.");
         note.setFont(note.getFont().deriveFont(Font.ITALIC, 11f));
         note.setForeground(java.awt.Color.GRAY);
 
@@ -579,6 +632,11 @@ public class SettingsPanel extends JPanel {
         return wrapTitled("Reset", content);
     }
 
+    /**
+     * Obsługa „Resetuj ustawienia". Po potwierdzeniu przywraca wszystkie
+     * ustawienia do domyślnych i wywołuje akcję restartu — bez restartu
+     * większość zmian (np. tryb persystencji) nie mogłaby zostać zastosowana.
+     */
     private void onResetSettings() {
         int confirm = JOptionPane.showConfirmDialog(this,
                 "Reset przywróci wszystkie ustawienia do wartości domyślnych\n" +
@@ -603,6 +661,15 @@ public class SettingsPanel extends JPanel {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Wczytanie wartości początkowych z konfiguracji
+    // -------------------------------------------------------------------------
+
+    /**
+     * Wczytuje wszystkie kontrolki ze stanu konfiguracji. Wywoływane w
+     * konstruktorze, po resecie ustawień, oraz przy revercie zmian wymagających
+     * restartu.
+     */
     private void loadCurrentValues() {
         loadPersistenceRadios();
         loadDataTypeCheckboxes();
@@ -612,6 +679,23 @@ public class SettingsPanel extends JPanel {
         defaultIntervalSlider.setValue(clampToMinuteSlider(config.getSchedulerDefaultIntervalSeconds() / 60));
     }
 
+    // -------------------------------------------------------------------------
+    // Wspólny wzorzec: zmiana wymagająca restartu
+    // -------------------------------------------------------------------------
+
+    /**
+     * Pyta użytkownika o potwierdzenie zmiany wymagającej restartu aplikacji.
+     *
+     * Po „Tak": wykonuje {@code applyAction} (zapis do AppConfig) i wywołuje
+     * zarejestrowaną akcję restartu (zamknięcie aplikacji w bezpiecznej
+     * kolejności) — użytkownik musi uruchomić aplikację ponownie ręcznie.
+     *
+     * Po „Nie": wykonuje {@code revertAction}, które przywraca poprzedni
+     * stan kontrolek GUI bez zapisywania niczego do konfiguracji.
+     *
+     * @param applyAction  zapisuje nowe wartości do AppConfig
+     * @param revertAction przywraca kontrolki GUI do stanu zgodnego z aktualną konfiguracją
+     */
     private void confirmRestartOrRevert(Runnable applyAction, Runnable revertAction) {
         int choice = JOptionPane.showConfirmDialog(this,
                 "Ta zmiana wymaga restartu aplikacji, aby w pełni zadziałać.\n" +
@@ -636,6 +720,14 @@ public class SettingsPanel extends JPanel {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Metody pomocnicze (UI)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Tworzy panel z pogrubionym tytułem w obramowaniu — wariant z bezpośrednim
+     * przekazaniem LayoutManagera (bez wewnętrznego wrappera).
+     */
     private JPanel titledPanel(String title, java.awt.LayoutManager layout) {
         JPanel panel = new JPanel(layout);
         TitledBorder border = BorderFactory.createTitledBorder(title);
@@ -644,6 +736,11 @@ public class SettingsPanel extends JPanel {
         return panel;
     }
 
+    /**
+     * Owija dowolny istniejący panel w obramowanie z tytułem.
+     * Używany dla sekcji, których wewnętrzny layout jest złożony
+     * (np. {@link BoxLayout}) i nie warto go odtwarzać w {@link #titledPanel}.
+     */
     private JPanel wrapTitled(String title, JPanel content) {
         JPanel wrapper = new JPanel(new java.awt.BorderLayout());
         wrapper.add(content, java.awt.BorderLayout.CENTER);
@@ -655,12 +752,21 @@ public class SettingsPanel extends JPanel {
         return wrapper;
     }
 
+    /**
+     * Tworzy pogrubioną etykietę używaną jako nagłówek sekcji checkboxów
+     * (np. „Dane meteo" nad polami temperatury/wiatru/opadów).
+     */
     private JLabel boldLabel(String text) {
         JLabel label = new JLabel(text);
         label.setFont(label.getFont().deriveFont(Font.BOLD));
         return label;
     }
 
+    /**
+     * Tworzy checkbox bez żadnego listenera — wyłącznie jako stan UI.
+     * Wartość jest odczytywana ręcznie przez wywołujący kod (np. przycisk
+     * „Zastosuj"), nie jest zapisywana automatycznie na każdy klik.
+     */
     private JCheckBox plainCheckbox(String label) {
         return new JCheckBox(label, true);
     }

@@ -13,8 +13,9 @@ package ecoalerter.persistence;
  * "throws PersistenceException" nie wymagają zmian.
  */
 public class DuplicateStationException extends PersistenceException {
+	private static final long serialVersionUID = -7921526901030498009L;
 
-    /**
+	/**
      * @param message komunikat opisujący duplikat — typowo zawiera ID i typ
      *                stacji, żeby okno informacyjne w GUI mogło pokazać go
      *                bez dodatkowego formatowania

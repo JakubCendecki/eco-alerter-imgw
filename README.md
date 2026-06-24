@@ -1,277 +1,88 @@
-# IMGW Monitor
+# EcoAlerter IMGW
 
-Wieloplatformowa aplikacja napisana w języku Java, służąca do automatycznego pobierania, monitorowania oraz przechowywania danych meteorologicznych i hydrologicznych udostępnianych przez interfejsy REST Instytutu Meteorologii i Gospodarki Wodnej (IMGW).
-
-## Funkcjonalności
-
-### Automatyczna integracja z API IMGW
-
-* Cycliczne pobieranie danych meteorologicznych i hydrologicznych z interfejsów REST IMGW.
-* Możliwość definiowania interwałów odpytywania przez użytkownika.
-* Niezależne harmonogramowanie dla poszczególnych stacji pomiarowych.
-
-### Zarządzanie stacjami
-
-Moduł GUI umożliwiający zarządzanie monitorowanymi stacjami:
-
-* Dodawanie nowych stacji meteorologicznych i hydrologicznych.
-* Usuwanie istniejących stacji.
-* Aktywowanie i dezaktywowanie wybranych stacji bez usuwania ich konfiguracji.
-* Dynamiczna aktualizacja listy stacji.
-
-### Konfiguracja zakresu danych
-
-Użytkownik może określić, jakie informacje mają być monitorowane:
-
-#### Dane meteorologiczne
-
-* Temperatura powietrza
-* Prędkość wiatru
-* Ciśnienie atmosferyczne
-* Opady atmosferyczne
-
-#### Dane hydrologiczne
-
-* Stan wody w rzekach
-* Temperatura wody
-
-#### Ostrzeżenia i alerty
-
-* Ostrzeżenia meteorologiczne
-* Ostrzeżenia hydrologiczne
-* Filtrowanie i wizualizacja alertów
-
-### Hybrydowy system persystencji danych
-
-Sposób przechowywania danych jest kontrolowany za pomocą pliku konfiguracyjnego (`.properties`).
-
-Obsługiwane metody zapisu:
-
-#### Relacyjna baza danych
-
-Zapisywanie zebranych danych w relacyjnym systemie zarządzania bazą danych.
-
-#### System plików
-
-Zapisywanie danych do ustrukturyzowanych plików:
-
-* JSON
-* CSV
-
-### Harmonogram zadań
-
-Elastyczny moduł planowania zadań umożliwiający definiowanie różnych częstotliwości odpytywania API dla poszczególnych lokalizacji.
-
-### Powiadomienia i logowanie
-
-* Wizualizacja stanów alarmowych w interfejsie GUI.
-* Rejestrowanie zdarzeń aplikacji.
-* Monitorowanie błędów i diagnostyka działania systemu.
-* Konfigurowalne logowanie oparte o Log4j2.
-
-### Wieloplatformowość
-
-Aplikacja jest w pełni przenośna i działa na systemach:
-
-* Windows
-* Linux
-* macOS
-
-Niezależność od platformy została osiągnięta dzięki wykorzystaniu:
-
-* Java SE 21
-* Systemu budowania Maven
-* Standardowych bibliotek JRE
-* Abstrakcji ścieżek dostępu do zasobów
+Aplikacja desktopowa (Swing, Java 21) do cyklicznego pobierania i monitorowania danych meteorologicznych i hydrologicznych z API IMGW. Wieloplatformowa — Windows, macOS, Linux.
 
 ---
 
-## Stos technologiczny
+## Szybki start
 
-| Komponent           | Technologia |
-| ------------------- | ----------- |
-| Język programowania | Java SE 21  |
-| System budowania    | Maven       |
-| Testowanie          | JUnit       |
-| Logowanie           | Log4j2      |
-| Obsługa JSON        | Gson        |
+### 1. Zainstaluj Java JDK 21 lub nowsze
 
----
-
-## Struktura projektu
-
-```text
-eco-alerter-imgw/
-├── config/
-├── data/
-│   ├── hydro/
-│   └── meteo/
-├── docs/
-├── src/
-│   ├── main/
-│   │   ├── java/
-│   │   │   └── ecoalerter/
-│   │   │       ├── api/
-│   │   │       ├── config/
-│   │   │       ├── gui/
-│   │   │       ├── model/
-│   │   │       ├── persistence/
-│   │   │       ├── scheduler/
-│   │   │       ├── service/
-│   │   │       └── util/
-│   │   └── resources/
-│   │       └── icons/
-│   └── test/
-│       └── java/
-│           └── ecoalerter/
-│               ├── api/
-│               ├── persistence/
-│               ├── scheduler/
-│               └── service/
-└── target/
-```
-
----
-
-## Wymagania
-
-### Środowisko uruchomieniowe
-
-* Java 21 lub nowsza
-
-Sprawdzenie instalacji:
+Sprawdź, czy działa:
 
 ```bash
 java --version
+# powinno pokazać "java version 21 lub openjdk 21" (lub nowsze)
 ```
 
-### Narzędzia budowania
+### 2. Pobierz projekt z releases
 
-* Maven 3.9 lub nowszy
+### 3. Uruchom
 
-Sprawdzenie instalacji:
+**Windows / macOS / Linux:**
 
 ```bash
-mvn --version
+java -jar imgw-monitor.jar
 ```
+
+---
+
+## Funkcjonalności
+
+- **Stacje:** dodawanie, usuwanie, edycja, aktywacja/dezaktywacja meteo i hydro.
+- **Dane meteo:** temperatura, wiatr, opady — z dynamicznym wyborem widocznych kolumn.
+- **Dane hydro:** stan wody, temperatura wody, przepływ, zjawiska (lód, zarastanie).
+- **Ostrzeżenia IMGW:** filtrowanie po poziomie (żółty / pomarańczowy / czerwony), wizualizacja w GUI.
+- **Harmonogram per stacja:** indywidualne interwały odpytywania, działa bez restartu po zmianach.
+- **Persystencja:** plik JSON albo baza SQLite — przełączane w ustawieniach.
+- **Powiadomienia:** wbudowane do paska statusu + banner offline gdy API nie odpowiada.
 
 ---
 
 ## Konfiguracja
 
-Ustawienia aplikacji przechowywane są w pliku:
+Wszystkie ustawienia są edytowalne z GUI w zakładce „Ustawienia". Plik źródłowy: `app.properties`.
+
+Najważniejsze klucze:
 
 ```properties
-config/app.properties
-```
-
-Przykładowa konfiguracja:
-
-```properties
-# Źródło danych
-imgw.api.enabled=true
-
-# Harmonogram
-scheduler.default.interval=300
-
-# Tryb persystencji
+# FILE albo DATABASE
 persistence.mode=file
 
-# Dostępne wartości:
-# file
-# database
+# dane logowania do bazy danych (nie są wymagane w sqlite)
+db.user= 
+db.password=
 
-# Format plików
-file.format=json
-
-# Dostępne wartości:
-# json
-# csv
+# Poziom logowania w log4j2
+log.level=INFO
 ```
+
+Logowanie: `config/log4j2.xml` (Log4j2). Logi domyślnie idą do `logs/`.
 
 ---
 
-## Budowanie projektu
+## Stos technologiczny
 
-Sklonuj repozytorium:
-
-```bash
-git clone https://github.com/JakubCendecki/eco-alerter-imgw
-cd eco-alerter-imgw
-```
-
-Skompiluj projekt:
-
-```bash
-mvn clean compile
-```
-
-Uruchom testy:
-
-```bash
-mvn test
-```
-
-Utwórz pakiet wykonywalny:
-
-```bash
-mvn clean package
-```
-
-Wygenerowane artefakty będą dostępne w katalogu:
-
-```text
-target/
-```
+| Komponent     | Wersja        |
+| ------------- | ------------- |
+| Java          | SE 21         |
+| Build         | Maven         |
+| Logowanie     | Log4j2        |
+| JSON          | Gson          |
+| Baza          | SQLite (JDBC) |
+| Pula połączeń | HikariCP      |
+| Testy         | JUnit 5       |
 
 ---
 
-## Uruchamianie aplikacji
-
-### Za pomocą Maven
+## Testy
 
 ```bash
-mvn exec:java
-```
-
-### Za pomocą wygenerowanego pliku JAR
-
-```bash
-java -jar target/imgw-monitor.jar
-```
-
----
-
-## Logowanie
-
-Aplikacja wykorzystuje bibliotekę Log4j2.
-
-Plik konfiguracyjny:
-
-```text
-config/log4j2.xml
-```
-
-Przykładowe rejestrowane zdarzenia:
-
-* Żądania wysyłane do API IMGW
-* Aktywność harmonogramu zadań
-* Operacje zapisu danych
-* Pobieranie ostrzeżeń i alertów
-* Wyjątki występujące podczas działania aplikacji
-
----
-
-## Testowanie
-
-Uruchomienie wszystkich testów:
-
-```bash
-mvn test
+mvn test         # Windows
 ```
 
 ---
 
 ## Licencja
 
-Projekt jest udostępniany na licencji MIT.
+MIT.

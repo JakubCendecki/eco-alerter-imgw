@@ -61,8 +61,9 @@ import java.util.List;
  * checkboxów w Ustawieniach od razu odbija się w widoku, bez restartu.
  */
 public class DataViewPanel extends JPanel implements NotificationService.AppEventListener {
+	private static final long serialVersionUID = 6967853359600831806L;
 
-    private static final Logger log = AppLogger.get(DataViewPanel.class);
+	private static final Logger log = AppLogger.get(DataViewPanel.class);
 
     /** Dyskretne kroki slajdera zakresu czasowego, w godzinach. */
     private static final int[] RANGE_HOURS = {1, 3, 6, 12, 24, 48, 72, 168, 720};
@@ -663,7 +664,9 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
      * kursywne szare „— brak stacji —".
      */
     private static class StationComboRenderer extends javax.swing.DefaultListCellRenderer {
-        /**
+		private static final long serialVersionUID = 867598602349618961L;
+
+		/**
          * Renderuje element listy/combo. Dla wartości innych niż Station
          * (typowo null) ustawia kursywę i szary kolor.
          */
@@ -690,7 +693,9 @@ public class DataViewPanel extends JPanel implements NotificationService.AppEven
      * mylącego z wartością „0" lub „minus".
      */
     private static class MissingValueRenderer extends javax.swing.table.DefaultTableCellRenderer {
-        private final Font baseFont;
+		private static final long serialVersionUID = 1184576405711335659L;
+		
+		private final Font baseFont;
         private final Font italicFont;
 
         /**
