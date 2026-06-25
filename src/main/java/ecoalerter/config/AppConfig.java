@@ -243,6 +243,7 @@ public class AppConfig {
 
         cfg.setWaterLevelEnabled(getBool("data.hydro.waterLevel", true));
         cfg.setWaterTemperatureEnabled(getBool("data.hydro.waterTemperature", true));
+        cfg.setHydroPhenomenaEnabled(getBool("data.hydro.phenomena", true));
 
         cfg.setWarningMinLevel(getWarningsFilterLevel());
 
@@ -391,5 +392,6 @@ public class AppConfig {
         p.setProperty("data.meteo.precipitation",            "true");
         p.setProperty("data.hydro.waterLevel",               "true");
         p.setProperty("data.hydro.waterTemperature",         "true");
+        p.setProperty("data.hydro.phenomena",                "true");
     }
 }

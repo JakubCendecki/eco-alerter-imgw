@@ -21,6 +21,14 @@ import java.util.Objects;
  *
  * <p>Pola liczbowe są typu {@link Double} / {@code int}, co pozwala
  * na reprezentację braku pomiaru jako {@code null}.
+ *
+ * <h2>Dwa znaczniki czasu</h2>
+ * Rekord ma <b>dwa</b> niezależne znaczniki czasu o różnej semantyce:
+ * <ul>
+ *   <li>{@link #timestamp} — moment pomiaru po stronie IMGW (z odpowiedzi API).
+ *   <li>{@link #fetchedAt} — moment, w którym <i>nasza aplikacja</i> pobrała
+ *       i zapisała rekord (czas systemowy, ustawiany w {@code FetchTask}).
+ * </ul>
  */
 public class HydroData {
 
@@ -36,8 +44,14 @@ public class HydroData {
     /** Województwo, w którym znajduje się stacja. */
     private String voivodeship;
 
-    /** Data i czas pomiaru. */
+    /** Data i czas pomiaru po stronie IMGW (z odpowiedzi API). */
     private LocalDateTime timestamp;
+
+    /**
+     * Data i czas pobrania rekordu przez aplikację (czas systemowy).
+     * Ustawiany w {@code FetchTask} bezpośrednio przed zapisem do repozytorium.
+     */
+    private LocalDateTime fetchedAt;
 
     /**
      * Stan wody [cm] — poziom wody nad zerem wodowskazowym.
@@ -153,6 +167,8 @@ public class HydroData {
 
     /**
      * Dwa pomiary są równe gdy dotyczą tej samej stacji i tego samego czasu.
+     * {@link #fetchedAt} jest celowo poza equals/hashCode — różny czas pobrania
+     * tego samego pomiaru IMGW NIE czyni go nowym rekordem.
      */
     @Override
     public boolean equals(Object o) {
@@ -170,8 +186,8 @@ public class HydroData {
     @Override
     public String toString() {
         return String.format(
-                "HydroData{stationId='%s', river='%s', time=%s, level=%s cm, temp=%s°C, flow=%s m³/s}",
-                stationId, riverName, timestamp, waterLevel, waterTemperature, flow);
+                "HydroData{stationId='%s', river='%s', time=%s, fetchedAt=%s, level=%s cm, temp=%s°C, flow=%s m³/s}",
+                stationId, riverName, timestamp, fetchedAt, waterLevel, waterTemperature, flow);
     }
 
     // -------------------------------------------------------------------------
@@ -194,9 +210,13 @@ public class HydroData {
     public String getVoivodeship()                       { return voivodeship; }
     public void setVoivodeship(String voivodeship)       { this.voivodeship = voivodeship; }
 
-    /** @return data i czas pomiaru */
+    /** @return data i czas pomiaru (po stronie IMGW) */
     public LocalDateTime getTimestamp()                  { return timestamp; }
     public void setTimestamp(LocalDateTime timestamp)    { this.timestamp = timestamp; }
+
+    /** @return data i czas pobrania rekordu przez aplikację (czas systemowy) */
+    public LocalDateTime getFetchedAt()                  { return fetchedAt; }
+    public void setFetchedAt(LocalDateTime fetchedAt)    { this.fetchedAt = fetchedAt; }
 
     /** @return stan wody [cm] lub {@code null} */
     public Double getWaterLevel()                        { return waterLevel; }

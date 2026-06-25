@@ -21,6 +21,7 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.Window;
+import java.util.Hashtable;
 import java.util.Optional;
 
 /**
@@ -45,8 +46,8 @@ import java.util.Optional;
 public class AddStationDialog extends JDialog {
 	private static final long serialVersionUID = -4919131662509912898L;
 	
-	private static final int MIN_INTERVAL_MINUTES = 5;
-    private static final int MAX_INTERVAL_MINUTES = 30;
+	private static final int MIN_INTERVAL_MINUTES = 1;
+    private static final int MAX_INTERVAL_MINUTES = 60;
     private static final int DEFAULT_INTERVAL_MINUTES = 5;
 
     private final JTextField        idField;
@@ -70,7 +71,7 @@ public class AddStationDialog extends JDialog {
         idField         = new JTextField(15);
         nameField       = new JTextField(20);
         typeCombo       = new JComboBox<>(StationType.values());
-        intervalSlider  = buildIntervalSlider();
+        intervalSlider  = buildIntervalSlider(DEFAULT_INTERVAL_MINUTES);
         activeCheckBox  = new JCheckBox("Aktywna", true);
 
         if (editMode && existing != null) {
@@ -105,13 +106,22 @@ public class AddStationDialog extends JDialog {
     // Budowanie UI
     // -------------------------------------------------------------------------
 
-    private JSlider buildIntervalSlider() {
-        JSlider slider = new JSlider(MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES, DEFAULT_INTERVAL_MINUTES);
+    private JSlider buildIntervalSlider(int initialMinutes) {
+        JSlider slider = new JSlider(MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES, initialMinutes);
         slider.setMajorTickSpacing(5);
+        slider.setMinorTickSpacing(1);
         slider.setSnapToTicks(true);
         slider.setPaintTicks(true);
-        slider.setPaintLabels(true); // minimum=5 i majorTickSpacing=5 dają etykiety 5,10,15,20,25,30 automatycznie
-        slider.setPreferredSize(new Dimension(260, 45));
+        slider.setPaintLabels(true);
+
+        Hashtable<Integer, JLabel> labels = new Hashtable<>();
+        labels.put(1, new JLabel("1"));
+        for (int v = 5; v <= 60; v += 5) {
+            labels.put(v, new JLabel(String.valueOf(v)));
+        }
+        slider.setLabelTable(labels);
+
+        slider.setPreferredSize(new java.awt.Dimension(360, 50));
         return slider;
     }
 

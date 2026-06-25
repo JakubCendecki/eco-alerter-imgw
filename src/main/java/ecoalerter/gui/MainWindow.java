@@ -1,7 +1,6 @@
 package ecoalerter.gui;
 
 import ecoalerter.config.AppConfig;
-import ecoalerter.gui.components.StatusBar;
 import ecoalerter.gui.panels.DataViewPanel;
 import ecoalerter.gui.panels.SettingsPanel;
 import ecoalerter.gui.panels.StationManagerPanel;
@@ -23,22 +22,18 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
 import javax.swing.SwingWorker;
-import javax.swing.Timer;
 import javax.swing.WindowConstants;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.time.LocalDateTime;
-import java.util.List;
 
 /**
  * Główne okno aplikacji EcoAlerter IMGW.
  *
- * Spaja wszystkie panele GUI w zakładki, wyświetla {@link StatusBar} u dołu
- * okna i synchronizuje go ze zdarzeniami z {@link NotificationService}.
- * Okno nie wykonuje żadnej logiki biznesowej samodzielnie — wyłącznie komponuje
- * gotowe panele i przekazuje im wymagane serwisy w konstruktorze.
+ * Spaja wszystkie panele GUI w zakładki. Okno nie wykonuje żadnej logiki
+ * biznesowej samodzielnie — wyłącznie komponuje gotowe panele i przekazuje
+ * im wymagane serwisy w konstruktorze.
  *
  * Tu też ustawia się „kable" między panelami, które same się nie znają —
  * np. callback z SettingsPanel do DataViewPanel po zmianie zakresu danych.
@@ -48,26 +43,26 @@ import java.util.List;
  * {@link #setOnCloseAction(Runnable)}, w której zamyka scheduler i repozytorium
  * we właściwej kolejności, a następnie kończy aplikację.
  */
-public class MainWindow extends JFrame implements NotificationService.AppEventListener {
-	private static final long serialVersionUID = 6506498032663738829L;
+public class MainWindow extends JFrame {
+	private static final long serialVersionUID = 8883166054555429685L;
 
 	private static final Logger log = AppLogger.get(MainWindow.class);
 
     private static final String APP_TITLE = "ECO Alert";
-    private static final int    STATUS_REFRESH_INTERVAL_MS = 5_000;
 
     private final StationService         stationService;
+    private final DataCollectionService  dataCollectionService;
+    private final WarningService         warningService;
     private final NotificationService    notificationService;
     private final TaskSchedulerManager   scheduler;
+    private final AppConfig              config;
 
-    private final StatusBar             statusBar;
     private final StationManagerPanel   stationManagerPanel;
     private final DataViewPanel         dataViewPanel;
     private final WarningPanel          warningPanel;
     private final SettingsPanel         settingsPanel;
 
-    private final Timer statusRefreshTimer;
-    private Runnable    onCloseAction;
+    private Runnable onCloseAction;
 
     // -------------------------------------------------------------------------
     // Konstruktor
@@ -77,8 +72,11 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
      * Buduje okno aplikacji i wszystkie zakładki.
      *
      * @param stationService        serwis stacji
+     * @param dataCollectionService serwis danych
+     * @param warningService        serwis ostrzeżeń
      * @param notificationService   szyna zdarzeń aplikacji
      * @param scheduler             zarządca harmonogramu cyklicznych zadań
+     * @param config                konfiguracja aplikacji
      */
     public MainWindow(StationService stationService,
                       DataCollectionService dataCollectionService,
@@ -89,14 +87,16 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
         super(APP_TITLE);
 
         this.stationService        = stationService;
+        this.dataCollectionService = dataCollectionService;
+        this.warningService        = warningService;
         this.notificationService   = notificationService;
         this.scheduler             = scheduler;
+        this.config                = config;
 
         setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         setMinimumSize(new Dimension(1024, 700));
         applyAppIcon();
 
-        this.statusBar            = new StatusBar();
         this.stationManagerPanel  = new StationManagerPanel(
                 stationService, dataCollectionService, notificationService);
         this.dataViewPanel        = new DataViewPanel(
@@ -127,12 +127,6 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
         tabs.setTabComponentAt(3, buildTabComponent("Ustawienia", IconLoader.loadScaled("settings.png", 18)));
 
         add(tabs, java.awt.BorderLayout.CENTER);
-        add(statusBar, java.awt.BorderLayout.SOUTH);
-
-        notificationService.addListener(this);
-
-        this.statusRefreshTimer = new Timer(STATUS_REFRESH_INTERVAL_MS, e -> refreshStatusBarCounts());
-        statusRefreshTimer.start();
 
         addWindowListener(new WindowAdapter() {
             @Override
@@ -141,7 +135,6 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
             }
         });
 
-        refreshStatusBarCounts();
         pack();
         setLocationRelativeTo(null);
     }
@@ -152,8 +145,7 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
 
     /**
      * Ustawia ikonę okna (widoczną w tytule okna i na pasku zadań systemu)
-     * z {@code app-icon.png}. Brak pliku jest obsługiwany bezpiecznie przez
-     * {@link IconLoader} — okno po prostu zostaje z domyślną ikoną Swing.
+     * z {@code app-icon.png}.
      */
     private void applyAppIcon() {
         ImageIcon icon = IconLoader.load("app-icon.png");
@@ -163,20 +155,12 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
     }
 
     // -------------------------------------------------------------------------
-    // Komponenty zakładek (ikona + tekst z większym odstępem niż domyślnie)
+    // Komponenty zakładek
     // -------------------------------------------------------------------------
 
     /**
      * Buduje niestandardowy komponent zakładki z ikoną i tekstem rozdzielonymi
-     * widocznym odstępem. Domyślne renderowanie
-     * {@code JTabbedPane.addTab(title, icon, ...)} sklejało ikonę z tekstem
-     * bardzo blisko — własny komponent z {@link FlowLayout} daje pełną
-     * kontrolę nad odstępem (12px).
-     *
-     * @param title tytuł zakładki
-     * @param icon  ikona zakładki; null jest dozwolone — wtedy widoczny
-     *              jest tylko tekst
-     * @return panel do ustawienia przez {@code tabs.setTabComponentAt(...)}
+     * widocznym odstępem.
      */
     private JPanel buildTabComponent(String title, Icon icon) {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 0));
@@ -197,10 +181,6 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
     /**
      * Uruchamia harmonogram dla wszystkich aktywnych stacji zapisanych
      * w repozytorium oraz cykliczne pobieranie ostrzeżeń.
-     *
-     * Wywołać raz po {@code setVisible(true)}, z klasy main aplikacji.
-     * Operacja wykonuje odczyt z repozytorium w tle (SwingWorker), więc
-     * nie blokuje EDT.
      */
     public void startServices() {
         new SwingWorker<Void, Void>() {
@@ -222,78 +202,16 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
                     JOptionPane.showMessageDialog(MainWindow.this,
                             "Nie udało się uruchomić harmonogramu:\n" + e.getMessage(),
                             "Błąd startu", JOptionPane.ERROR_MESSAGE);
-                } finally {
-                    refreshStatusBarCounts();
                 }
             }
         }.execute();
     }
 
     /**
-     * Rejestruje akcję wykonywaną przy zamknięciu okna (np. zamknięcie
-     * schedulera, repozytorium, zapis konfiguracji na dysk, {@code System.exit}).
-     * Bez ustawienia tej akcji okno jedynie się ukryje bez zatrzymania
-     * wątków schedulera.
-     *
-     * @param action akcja zamknięcia wywoływana na EDT
+     * Rejestruje akcję wykonywaną przy zamknięciu okna.
      */
     public void setOnCloseAction(Runnable action) {
         this.onCloseAction = action;
-    }
-
-    // -------------------------------------------------------------------------
-    // NotificationService.AppEventListener
-    // -------------------------------------------------------------------------
-
-    /**
-     * Obsługuje zdarzenia globalne, które wpływają na pasek statusu:
-     * {@code DATA_UPDATED} aktualizuje znacznik ostatniej synchronizacji
-     * i liczniki, {@code STATION_ERROR} odświeża liczniki krytycznych stacji,
-     * {@code WARNINGS_REFRESHED} aktualizuje sumaryczne podsumowanie ostrzeżeń.
-     * {@code WARNING_DETECTED} jest pomijane — obsługuje je już bezpośrednio
-     * {@code WarningPanel} i {@code AlertBadge}.
-     */
-    @Override
-    public void onEvent(NotificationService.AppEvent event) {
-        switch (event.getType()) {
-            case DATA_UPDATED -> {
-                statusBar.setLastSync(LocalDateTime.now());
-                refreshStatusBarCounts();
-            }
-            case STATION_ERROR -> refreshStatusBarCounts();
-            case WARNINGS_REFRESHED -> updateWarningSummaryFromEvent(event);
-            case WARNING_DETECTED -> { /* obsłużone już przez WarningPanel i AlertBadge */ }
-            default -> throw new IllegalArgumentException("Unexpected value: " + event.getType());
-        }
-    }
-
-    /**
-     * Wyciąga listę ostrzeżeń z payloadu zdarzenia {@code WARNINGS_REFRESHED}
-     * i odświeża sumę pokazywaną na pasku statusu.
-     * Bezpiecznie ignoruje payloady innego typu niż {@link List}.
-     */
-    @SuppressWarnings("unchecked")
-    private void updateWarningSummaryFromEvent(NotificationService.AppEvent event) {
-        Object payload = event.getPayload();
-        if (payload instanceof List<?>) {
-            List<ecoalerter.model.Warning> warnings =
-                    (List<ecoalerter.model.Warning>) payload;
-            statusBar.setWarningSummary(WarningService.WarningSummary.from(warnings));
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Odświeżanie paska statusu
-    // -------------------------------------------------------------------------
-
-    /**
-     * Odświeża liczniki na pasku statusu (aktywne stacje, stacje krytyczne).
-     * Wywoływane co {@value #STATUS_REFRESH_INTERVAL_MS} ms przez Timer
-     * oraz po każdym istotnym zdarzeniu (np. {@code DATA_UPDATED}).
-     */
-    private void refreshStatusBarCounts() {
-        statusBar.setActiveStations(scheduler.getActiveTaskCount());
-        statusBar.setCriticalStations(notificationService.getCriticalStationCount());
     }
 
     // -------------------------------------------------------------------------
@@ -301,25 +219,16 @@ public class MainWindow extends JFrame implements NotificationService.AppEventLi
     // -------------------------------------------------------------------------
 
     /**
-     * Wykonuje sekwencję zamknięcia okna: zatrzymuje timer, wyrejestrowuje
-     * listenery z {@link NotificationService}, woła {@code dispose()}
-     * na zakładkach (żeby i one wyczyściły swoje subskrypcje), a na końcu
-     * uruchamia akcję zewnętrzną zarejestrowaną przez {@link #setOnCloseAction}.
-     *
-     * Gdy akcja zewnętrzna nie jest ustawiona, okno jest jedynie ukrywane
-     * przez standardowe {@code dispose()} — wątki schedulera pozostaną wtedy
-     * aktywne, więc klasa main powinna zawsze ustawić akcję zamknięcia.
+     * Wykonuje sekwencję zamknięcia okna: woła {@code dispose()} na zakładkach
+     * (żeby one wyczyściły swoje subskrypcje), a na końcu uruchamia akcję
+     * zewnętrzną zarejestrowaną przez {@link #setOnCloseAction}.
      */
     private void handleWindowClosing() {
         log.info("Zamykanie głównego okna aplikacji");
 
-        statusRefreshTimer.stop();
-        notificationService.removeListener(this);
-
         stationManagerPanel.dispose();
         dataViewPanel.dispose();
         warningPanel.dispose();
-        statusBar.dispose();
 
         if (onCloseAction != null) {
             onCloseAction.run();

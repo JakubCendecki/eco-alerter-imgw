@@ -1,20 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="WARN" monitorInterval="60">
+<!--
+  Konfiguracja Log4j2 dla EcoAlerter IMGW.
+
+  status="INFO" celowo — żeby widzieć w konsoli, co Log4j2 robi przy starcie
+  (gdzie pisze pliki, czy appendery się zainicjalizowały). Po stwierdzeniu
+  że logi działają, można zmienić na "WARN".
+
+  Pliki idą do katalogu z properties systemowej -Decoalerter.log.dir=...
+  albo domyślnie do ./logs (względem katalogu uruchomienia aplikacji).
+
+  Lokalizacja tego pliku: src/main/resources/log4j2.xml
+  Log4j2 znajduje go automatycznie przez classpath.
+-->
+<Configuration status="INFO" monitorInterval="60">
 
     <Properties>
-        <!-- Katalog logów — nadpisywalny właściwością systemową -Decoalerter.log.dir=... -->
         <Property name="LOG_DIR">${sys:ecoalerter.log.dir:-./logs}</Property>
         <Property name="APP_NAME">eco-alerter-imgw</Property>
 
-        <!-- Format linii logu w pliku -->
-        <Property name="FILE_PATTERN">
-            %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n%throwable
-        </Property>
-
-        <!-- Format linii logu w konsoli (z kolorami ANSI) -->
-        <Property name="CONSOLE_PATTERN">
-            %d{HH:mm:ss.SSS} %highlight{%-5level}{FATAL=red blink, ERROR=red, WARN=yellow, INFO=green, DEBUG=cyan, TRACE=white} %style{%logger{30}}{bright,blue} - %msg%n%throwable
-        </Property>
+        <!-- Patterny w JEDNEJ linii — bez whitespace przed/po,
+             żeby ${FILE_PATTERN} nie podstawiało nadmiarowych odstępów. -->
+        <Property name="FILE_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n%throwable</Property>
+        <Property name="CONSOLE_PATTERN">%d{HH:mm:ss.SSS} %highlight{%-5level}{FATAL=red blink, ERROR=red, WARN=yellow, INFO=green, DEBUG=cyan, TRACE=white} %style{%logger{30}}{bright,blue} - %msg%n%throwable</Property>
     </Properties>
 
     <!-- ================================================================== -->
@@ -22,25 +29,22 @@
     <!-- ================================================================== -->
     <Appenders>
 
-        <!-- Konsola — wszystkie poziomy INFO i wyżej -->
+        <!-- Konsola — INFO i wyżej, z kolorami ANSI (jeśli terminal wspiera). -->
         <Console name="ConsoleAppender" target="SYSTEM_OUT">
             <PatternLayout pattern="${CONSOLE_PATTERN}" disableAnsi="false"/>
             <ThresholdFilter level="INFO" onMatch="ACCEPT" onMismatch="DENY"/>
         </Console>
 
-        <!-- Plik główny — rolling po dacie i rozmiarze, łączny limit 20 MB -->
+        <!-- Plik główny — rolling po dacie i rozmiarze, łączny limit 20 MB. -->
         <RollingFile name="FileAppender"
                      fileName="${LOG_DIR}/${APP_NAME}.log"
-                     filePattern="${LOG_DIR}/${APP_NAME}-%d{yyyy-MM-dd}-%i.log.gz">
+                     filePattern="${LOG_DIR}/${APP_NAME}-%d{yyyy-MM-dd}-%i.log.gz"
+                     createOnDemand="false">
             <PatternLayout pattern="${FILE_PATTERN}"/>
             <Policies>
-                <!-- Nowy plik o północy -->
                 <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
-                <!-- Nowy plik po przekroczeniu 10 MB -->
                 <SizeBasedTriggeringPolicy size="10MB"/>
             </Policies>
-            <!-- Po każdej rotacji: jeśli zarchiwizowane pliki przekraczają 20 MB
-                 łącznie, usuń najstarsze, aż zmieści się w limicie -->
             <DefaultRolloverStrategy compressionLevel="6">
                 <Delete basePath="${LOG_DIR}" maxDepth="1">
                     <IfFileName glob="${APP_NAME}-20*.log.gz"/>
@@ -50,10 +54,11 @@
             <ThresholdFilter level="DEBUG" onMatch="ACCEPT" onMismatch="DENY"/>
         </RollingFile>
 
-        <!-- Osobny plik tylko dla błędów (ERROR i FATAL), łączny limit 10 MB -->
+        <!-- Tylko błędy (ERROR i FATAL), osobny plik. -->
         <RollingFile name="ErrorFileAppender"
                      fileName="${LOG_DIR}/${APP_NAME}-errors.log"
-                     filePattern="${LOG_DIR}/${APP_NAME}-errors-%d{yyyy-MM-dd}-%i.log.gz">
+                     filePattern="${LOG_DIR}/${APP_NAME}-errors-%d{yyyy-MM-dd}-%i.log.gz"
+                     createOnDemand="false">
             <PatternLayout pattern="${FILE_PATTERN}"/>
             <Policies>
                 <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
@@ -68,10 +73,11 @@
             <ThresholdFilter level="ERROR" onMatch="ACCEPT" onMismatch="DENY"/>
         </RollingFile>
 
-        <!-- Osobny plik tylko dla zdarzeń API (logi żądań HTTP do IMGW), łączny limit 10 MB -->
+        <!-- Wyłącznie zdarzenia API (HTTP do IMGW). -->
         <RollingFile name="ApiFileAppender"
                      fileName="${LOG_DIR}/${APP_NAME}-api.log"
-                     filePattern="${LOG_DIR}/${APP_NAME}-api-%d{yyyy-MM-dd}-%i.log.gz">
+                     filePattern="${LOG_DIR}/${APP_NAME}-api-%d{yyyy-MM-dd}-%i.log.gz"
+                     createOnDemand="false">
             <PatternLayout pattern="${FILE_PATTERN}"/>
             <Policies>
                 <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
@@ -89,38 +95,40 @@
     </Appenders>
 
     <!-- ================================================================== -->
-    <!-- KONFIGURACJA LOGGERÓW                                              -->
+    <!-- LOGGERY                                                             -->
     <!-- ================================================================== -->
     <Loggers>
 
-        <!-- Logger dla całej warstwy API — DEBUG do pliku api.log -->
+        <!-- API — DEBUG do osobnego pliku api.log + błędy do errors.log -->
         <Logger name="ecoalerter.api" level="DEBUG" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="ApiFileAppender"/>
             <AppenderRef ref="ErrorFileAppender"/>
         </Logger>
 
-        <!-- Logger schedulera — INFO, bo jest bardzo aktywny -->
+        <!-- Scheduler — INFO do głównego pliku -->
         <Logger name="ecoalerter.scheduler" level="INFO" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="FileAppender"/>
             <AppenderRef ref="ErrorFileAppender"/>
         </Logger>
 
-        <!-- Logger persystencji — DEBUG do głównego pliku -->
+        <!-- Persistence — DEBUG do głównego pliku -->
         <Logger name="ecoalerter.persistence" level="DEBUG" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="FileAppender"/>
             <AppenderRef ref="ErrorFileAppender"/>
         </Logger>
 
-        <!-- Logger GUI — tylko WARN i wyżej w konsoli, ERROR do pliku -->
-        <Logger name="ecoalerter.gui" level="WARN" additivity="false">
+        <!-- GUI — INFO (bo WARN gubił przydatne komunikaty),
+             pisze TEŻ do głównego FileAppender, nie tylko errors. -->
+        <Logger name="ecoalerter.gui" level="INFO" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
+            <AppenderRef ref="FileAppender"/>
             <AppenderRef ref="ErrorFileAppender"/>
         </Logger>
 
-        <!-- Wyciszenie nadmiernie gadatliwych bibliotek zewnętrznych -->
+        <!-- Wyciszone biblioteki -->
         <Logger name="com.zaxxer.hikari" level="WARN" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="FileAppender"/>
@@ -129,7 +137,7 @@
             <AppenderRef ref="ConsoleAppender"/>
         </Logger>
 
-        <!-- Root logger — domyślny poziom INFO dla wszystkiego pozostałego -->
+        <!-- Root — wszystko inne (np. klasy w pakiecie ecoalerter bezpośrednio) -->
         <Root level="INFO">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="FileAppender"/>

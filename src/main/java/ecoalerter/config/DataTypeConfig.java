@@ -22,6 +22,7 @@ import ecoalerter.model.WarningLevel;
  * # Pola hydro
  * data.hydro.waterLevel=true
  * data.hydro.waterTemperature=true
+ * data.hydro.phenomena=true
  *
  * # Filtrowanie ostrzeżeń
  * warnings.filter.level=YELLOW
@@ -52,6 +53,12 @@ public class DataTypeConfig {
     private boolean waterLevelEnabled;
     private boolean waterTemperatureEnabled;
 
+    /**
+     * Pokazywanie kolumny zjawisk hydro (lód + zarastanie razem).
+     * Jedna flaga dla obu — w GUI prezentowane są w jednej kolumnie „Zjawiska".
+     */
+    private boolean hydroPhenomenaEnabled;
+
     // -------------------------------------------------------------------------
     // Ostrzeżenia
     // -------------------------------------------------------------------------
@@ -65,15 +72,16 @@ public class DataTypeConfig {
 
     /** Tworzy konfigurację z domyślnymi wartościami (wszystko włączone, poziom YELLOW). */
     public DataTypeConfig() {
-        this.meteoEnabled        = true;
-        this.hydroEnabled        = true;
-        this.warningsEnabled     = true;
-        this.temperatureEnabled  = true;
-        this.windEnabled         = true;
-        this.precipitationEnabled = true;
-        this.waterLevelEnabled   = true;
+        this.meteoEnabled            = true;
+        this.hydroEnabled            = true;
+        this.warningsEnabled         = true;
+        this.temperatureEnabled      = true;
+        this.windEnabled             = true;
+        this.precipitationEnabled    = true;
+        this.waterLevelEnabled       = true;
         this.waterTemperatureEnabled = true;
-        this.warningMinLevel     = WarningLevel.YELLOW;
+        this.hydroPhenomenaEnabled   = true;
+        this.warningMinLevel         = WarningLevel.YELLOW;
     }
 
     // -------------------------------------------------------------------------
@@ -97,9 +105,11 @@ public class DataTypeConfig {
 
     /**
      * Czy jakiekolwiek pole hydro jest włączone (przy włączonej grupie hydro).
+     * Uwzględnia też przełącznik zjawisk hydro — gdy WSZYSTKIE pola hydro
+     * są wyłączone, DataViewPanel pokazuje tylko kolumny dat i nic poza tym.
      */
     public boolean hasAnyHydroField() {
-        return waterLevelEnabled || waterTemperatureEnabled;
+        return waterLevelEnabled || waterTemperatureEnabled || hydroPhenomenaEnabled;
     }
 
     /**
@@ -109,9 +119,9 @@ public class DataTypeConfig {
     public String toString() {
         return String.format(
                 "DataTypeConfig{meteo=%b(temp=%b,wind=%b,precip=%b), " +
-                "hydro=%b(level=%b,temp=%b), warnings=%b(minLevel=%s)}",
+                "hydro=%b(level=%b,temp=%b,phenomena=%b), warnings=%b(minLevel=%s)}",
                 meteoEnabled, temperatureEnabled, windEnabled, precipitationEnabled,
-                hydroEnabled, waterLevelEnabled, waterTemperatureEnabled,
+                hydroEnabled, waterLevelEnabled, waterTemperatureEnabled, hydroPhenomenaEnabled,
                 warningsEnabled, warningMinLevel
         );
     }
@@ -143,6 +153,10 @@ public class DataTypeConfig {
 
     public boolean isWaterTemperatureEnabled() { return waterTemperatureEnabled; }
     public void setWaterTemperatureEnabled(boolean v) { this.waterTemperatureEnabled = v; }
+
+    /** @return {@code true} jeśli kolumna zjawisk hydro (lód + zarastanie) ma być widoczna w GUI */
+    public boolean isHydroPhenomenaEnabled()   { return hydroPhenomenaEnabled; }
+    public void setHydroPhenomenaEnabled(boolean v) { this.hydroPhenomenaEnabled = v; }
 
     public WarningLevel getWarningMinLevel()   { return warningMinLevel; }
     public void setWarningMinLevel(WarningLevel v) { this.warningMinLevel = v; }

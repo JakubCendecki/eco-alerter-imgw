@@ -12,13 +12,23 @@ import java.util.Objects;
  *
  * Pola odpowiadają odpowiedzi endpointu /api/data/meteo:
  * - kod_stacji              -> stationId
- * - nazwa_stacji             -> stationName
+ * - nazwa_stacji            -> stationName
  * - temperatura_powietrza   -> temperature
  * - wiatr_srednia_predkosc  -> windSpeed
  * - opad_10min              -> precipitation
  *
  * Sieć AWS nie mierzy ciśnienia atmosferycznego — model nie zawiera
  * takiego pola.
+ *
+ * <h2>Dwa znaczniki czasu</h2>
+ * Rekord ma <b>dwa</b> niezależne znaczniki czasu o różnej semantyce:
+ * <ul>
+ *   <li>{@link #timestamp} — moment pomiaru po stronie IMGW (przychodzi z API).
+ *   <li>{@link #fetchedAt} — moment, w którym <i>nasza aplikacja</i> pobrała
+ *       i zapisała rekord (czas systemowy, ustawiany w {@code FetchTask}).
+ * </ul>
+ * Różnica między nimi mówi, ile czasu minęło od pomiaru do jego pobrania
+ * przez aplikację. W GUI obie kolumny są wyświetlane obok siebie.
  */
 public class MeteoData {
 
@@ -28,8 +38,15 @@ public class MeteoData {
     /** Czytelna nazwa stacji w momencie pomiaru. */
     private String stationName;
 
-    /** Data i czas pomiaru. */
+    /** Data i czas pomiaru po stronie IMGW (z odpowiedzi API). */
     private LocalDateTime timestamp;
+
+    /**
+     * Data i czas pobrania rekordu przez aplikację (czas systemowy).
+     * Ustawiany w {@code FetchTask} bezpośrednio przed zapisem do repozytorium.
+     * Pozwala odróżnić moment pomiaru po stronie IMGW od momentu lokalnego pobrania.
+     */
+    private LocalDateTime fetchedAt;
 
     /**
      * Temperatura powietrza [°C].
@@ -109,6 +126,8 @@ public class MeteoData {
 
     /**
      * Dwa pomiary są równe gdy dotyczą tej samej stacji i tego samego czasu.
+     * {@link #fetchedAt} jest celowo poza equals/hashCode — różny czas pobrania
+     * tego samego pomiaru IMGW NIE czyni go nowym rekordem.
      */
     @Override
     public boolean equals(Object o) {
@@ -126,8 +145,8 @@ public class MeteoData {
     @Override
     public String toString() {
         return String.format(
-                "MeteoData{stationId='%s', name='%s', time=%s, temp=%s, wind=%s, precip=%s}",
-                stationId, stationName, timestamp, temperature, windSpeed, precipitation);
+                "MeteoData{stationId='%s', name='%s', time=%s, fetchedAt=%s, temp=%s, wind=%s, precip=%s}",
+                stationId, stationName, timestamp, fetchedAt, temperature, windSpeed, precipitation);
     }
 
     // -------------------------------------------------------------------------
@@ -142,9 +161,13 @@ public class MeteoData {
     public String getStationName()                    { return stationName; }
     public void setStationName(String stationName)    { this.stationName = stationName; }
 
-    /** @return data i czas pomiaru */
+    /** @return data i czas pomiaru (po stronie IMGW) */
     public LocalDateTime getTimestamp()               { return timestamp; }
     public void setTimestamp(LocalDateTime timestamp) { this.timestamp = timestamp; }
+
+    /** @return data i czas pobrania rekordu przez aplikację (czas systemowy) */
+    public LocalDateTime getFetchedAt()               { return fetchedAt; }
+    public void setFetchedAt(LocalDateTime fetchedAt) { this.fetchedAt = fetchedAt; }
 
     /** @return temperatura powietrza [°C] lub null */
     public Double getTemperature()                    { return temperature; }

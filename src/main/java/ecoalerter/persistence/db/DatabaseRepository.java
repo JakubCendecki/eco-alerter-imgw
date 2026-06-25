@@ -66,10 +66,11 @@ public class DatabaseRepository implements DataRepository {
     @Override
     public void saveStation(Station station) throws PersistenceException {
         String sql = """
-                INSERT INTO stations (id, name, type, active, interval_seconds, updated_at)
-                VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now'))
+                INSERT INTO stations (id, name, api_name, type, active, interval_seconds, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%S', 'now'))
                 ON CONFLICT(id, type) DO UPDATE SET
                     name             = excluded.name,
+                    api_name         = COALESCE(excluded.api_name, stations.api_name),
                     active           = excluded.active,
                     interval_seconds = excluded.interval_seconds,
                     updated_at       = excluded.updated_at
@@ -80,9 +81,10 @@ public class DatabaseRepository implements DataRepository {
 
             ps.setString(1, station.getId());
             ps.setString(2, station.getName());
-            ps.setString(3, station.getType().name());
-            ps.setInt(4, station.isActive() ? 1 : 0);
-            ps.setInt(5, station.getIntervalSeconds());
+            ps.setString(3, station.getApiName());
+            ps.setString(4, station.getType().name());
+            ps.setInt(5, station.isActive() ? 1 : 0);
+            ps.setInt(6, station.getIntervalSeconds());
             ps.executeUpdate();
 
             log.debug("Zapisano stację: {}", station.getId());
@@ -179,7 +181,7 @@ public class DatabaseRepository implements DataRepository {
     /** Wszystkie stacje (aktywne i nieaktywne), posortowane alfabetycznie po nazwie. */
     @Override
     public List<Station> findAllStations() throws PersistenceException {
-        String sql = "SELECT id, name, type, active, interval_seconds FROM stations ORDER BY name";
+        String sql = "SELECT id, name, api_name, type, active, interval_seconds FROM stations ORDER BY name";
         return queryStations(sql);
     }
 
@@ -187,7 +189,7 @@ public class DatabaseRepository implements DataRepository {
     @Override
     public List<Station> findActiveStations(StationType type) throws PersistenceException {
         String sql = """
-                SELECT id, name, type, active, interval_seconds
+                SELECT id, name, api_name, type, active, interval_seconds
                 FROM stations
                 WHERE active = 1 AND type = ?
                 ORDER BY name
@@ -216,8 +218,8 @@ public class DatabaseRepository implements DataRepository {
     public void saveMeteo(MeteoData data) throws PersistenceException {
         String sql = """
                 INSERT OR IGNORE INTO meteo_data
-                    (station_id, timestamp, temperature, wind_speed, precipitation)
-                VALUES (?, ?, ?, ?, ?)
+                    (station_id, timestamp, fetched_at, temperature, wind_speed, precipitation)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """;
 
         try (Connection conn = pool.getConnection();
@@ -243,8 +245,8 @@ public class DatabaseRepository implements DataRepository {
 
         String sql = """
                 INSERT OR IGNORE INTO meteo_data
-                    (station_id, timestamp, temperature, wind_speed, precipitation)
-                VALUES (?, ?, ?, ?, ?)
+                    (station_id, timestamp, fetched_at, temperature, wind_speed, precipitation)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """;
 
         try (Connection conn = pool.getConnection();
@@ -273,7 +275,7 @@ public class DatabaseRepository implements DataRepository {
     @Override
     public List<MeteoData> findMeteoByStation(String stationId) throws PersistenceException {
         String sql = """
-                SELECT station_id, timestamp, temperature, wind_speed, precipitation
+                SELECT station_id, timestamp, fetched_at, temperature, wind_speed, precipitation
                 FROM meteo_data
                 WHERE station_id = ?
                 ORDER BY timestamp DESC
@@ -296,7 +298,7 @@ public class DatabaseRepository implements DataRepository {
                                                       LocalDateTime from,
                                                       LocalDateTime to) throws PersistenceException {
         String sql = """
-                SELECT station_id, timestamp, temperature, wind_speed, precipitation
+                SELECT station_id, timestamp, fetched_at, temperature, wind_speed, precipitation
                 FROM meteo_data
                 WHERE station_id = ? AND timestamp >= ? AND timestamp <= ?
                 ORDER BY timestamp ASC
@@ -323,7 +325,7 @@ public class DatabaseRepository implements DataRepository {
     @Override
     public Optional<MeteoData> findLatestMeteo(String stationId) throws PersistenceException {
         String sql = """
-                SELECT station_id, timestamp, temperature, wind_speed, precipitation
+                SELECT station_id, timestamp, fetched_at, temperature, wind_speed, precipitation
                 FROM meteo_data
                 WHERE station_id = ?
                 ORDER BY timestamp DESC
@@ -376,9 +378,10 @@ public class DatabaseRepository implements DataRepository {
     public void saveHydro(HydroData data) throws PersistenceException {
         String sql = """
                 INSERT OR IGNORE INTO hydro_data
-                    (station_id, timestamp, water_level, water_temperature,
-                     flow, ice_phenomenon, overgrowth_phenomenon)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (station_id, timestamp, fetched_at, river_name,
+                     water_level, water_temperature, flow,
+                     ice_phenomenon, overgrowth_phenomenon)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
         try (Connection conn = pool.getConnection();
@@ -403,9 +406,10 @@ public class DatabaseRepository implements DataRepository {
 
         String sql = """
                 INSERT OR IGNORE INTO hydro_data
-                    (station_id, timestamp, water_level, water_temperature,
-                     flow, ice_phenomenon, overgrowth_phenomenon)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (station_id, timestamp, fetched_at, river_name,
+                     water_level, water_temperature, flow,
+                     ice_phenomenon, overgrowth_phenomenon)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
         try (Connection conn = pool.getConnection();
@@ -434,7 +438,7 @@ public class DatabaseRepository implements DataRepository {
     @Override
     public List<HydroData> findHydroByStation(String stationId) throws PersistenceException {
         String sql = """
-                SELECT station_id, timestamp, water_level, water_temperature,
+                SELECT station_id, timestamp, fetched_at, river_name, water_level, water_temperature,
                        flow, ice_phenomenon, overgrowth_phenomenon
                 FROM hydro_data
                 WHERE station_id = ?
@@ -458,7 +462,7 @@ public class DatabaseRepository implements DataRepository {
                                                       LocalDateTime from,
                                                       LocalDateTime to) throws PersistenceException {
         String sql = """
-                SELECT station_id, timestamp, water_level, water_temperature,
+                SELECT station_id, timestamp, fetched_at, river_name, water_level, water_temperature,
                        flow, ice_phenomenon, overgrowth_phenomenon
                 FROM hydro_data
                 WHERE station_id = ? AND timestamp >= ? AND timestamp <= ?
@@ -482,7 +486,7 @@ public class DatabaseRepository implements DataRepository {
     @Override
     public Optional<HydroData> findLatestHydro(String stationId) throws PersistenceException {
         String sql = """
-                SELECT station_id, timestamp, water_level, water_temperature,
+                SELECT station_id, timestamp, fetched_at, river_name, water_level, water_temperature,
                        flow, ice_phenomenon, overgrowth_phenomenon
                 FROM hydro_data
                 WHERE station_id = ?
@@ -659,18 +663,23 @@ public class DatabaseRepository implements DataRepository {
     /**
      * Wypełnia parametry PreparedStatement dla insertu meteo.
      * Kolejność zgodna z definicją kolumn:
-     * {@code station_id, timestamp, temperature, wind_speed, precipitation}.
+     * {@code station_id, timestamp, fetched_at, temperature, wind_speed, precipitation}.
      */
     private void bindMeteo(PreparedStatement ps, MeteoData d) throws SQLException {
         ps.setString(1, d.getStationId());
         ps.setString(2, DateTimeUtil.toDbString(d.getTimestamp()));
-        setNullableDouble(ps, 3, d.getTemperature());
-        setNullableDouble(ps, 4, d.getWindSpeed());
-        setNullableDouble(ps, 5, d.getPrecipitation());
+        ps.setString(3, DateTimeUtil.toDbString(d.getFetchedAt()));
+        setNullableDouble(ps, 4, d.getTemperature());
+        setNullableDouble(ps, 5, d.getWindSpeed());
+        setNullableDouble(ps, 6, d.getPrecipitation());
     }
 
     /**
      * Wypełnia parametry PreparedStatement dla insertu hydro.
+     * Kolejność zgodna z definicją kolumn: {@code station_id, timestamp,
+     * fetched_at, river_name, water_level, water_temperature, flow,
+     * ice_phenomenon, overgrowth_phenomenon}.
+     *
      * Zjawiska (lód, zarastanie) są intami 0/1 zamiast NULLABLE Boolean —
      * upraszcza filtrowanie po stronie SQL i zgadza się z tym, jak IMGW
      * zwraca te flagi.
@@ -678,11 +687,13 @@ public class DatabaseRepository implements DataRepository {
     private void bindHydro(PreparedStatement ps, HydroData d) throws SQLException {
         ps.setString(1, d.getStationId());
         ps.setString(2, DateTimeUtil.toDbString(d.getTimestamp()));
-        setNullableDouble(ps, 3, d.getWaterLevel());
-        setNullableDouble(ps, 4, d.getWaterTemperature());
-        setNullableDouble(ps, 5, d.getFlow());
-        ps.setInt(6, d.getIcePhenomenon());
-        ps.setInt(7, d.getOvergrowthPhenomenon());
+        ps.setString(3, DateTimeUtil.toDbString(d.getFetchedAt()));
+        ps.setString(4, d.getRiverName());
+        setNullableDouble(ps, 5, d.getWaterLevel());
+        setNullableDouble(ps, 6, d.getWaterTemperature());
+        setNullableDouble(ps, 7, d.getFlow());
+        ps.setInt(8, d.getIcePhenomenon());
+        ps.setInt(9, d.getOvergrowthPhenomenon());
     }
 
     /**
@@ -740,6 +751,7 @@ public class DatabaseRepository implements DataRepository {
             Station s = new Station();
             s.setId(rs.getString("id"));
             s.setName(rs.getString("name"));
+            s.setApiName(rs.getString("api_name"));
             s.setType(StationType.fromString(rs.getString("type")));
             s.setActive(rs.getInt("active") == 1);
             s.setIntervalSeconds(rs.getInt("interval_seconds"));
@@ -755,6 +767,7 @@ public class DatabaseRepository implements DataRepository {
             MeteoData d = new MeteoData();
             d.setStationId(rs.getString("station_id"));
             d.setTimestamp(DateTimeUtil.parse(rs.getString("timestamp")).orElse(null));
+            d.setFetchedAt(DateTimeUtil.parse(rs.getString("fetched_at")).orElse(null));
             d.setTemperature(getNullableDouble(rs, "temperature"));
             d.setWindSpeed(getNullableDouble(rs, "wind_speed"));
             d.setPrecipitation(getNullableDouble(rs, "precipitation"));
@@ -770,6 +783,8 @@ public class DatabaseRepository implements DataRepository {
             HydroData d = new HydroData();
             d.setStationId(rs.getString("station_id"));
             d.setTimestamp(DateTimeUtil.parse(rs.getString("timestamp")).orElse(null));
+            d.setFetchedAt(DateTimeUtil.parse(rs.getString("fetched_at")).orElse(null));
+            d.setRiverName(rs.getString("river_name"));
             d.setWaterLevel(getNullableDouble(rs, "water_level"));
             d.setWaterTemperature(getNullableDouble(rs, "water_temperature"));
             d.setFlow(getNullableDouble(rs, "flow"));

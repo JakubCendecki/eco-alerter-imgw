@@ -35,7 +35,7 @@ public class SchemaInitializer {
     private static final Logger log = AppLogger.get(SchemaInitializer.class);
 
     private static final String SCHEMA_FILE = "schema.sql";
-    private static final int    EXPECTED_VERSION = 2;
+    private static final int    EXPECTED_VERSION = 3;
 
     private final ConnectionPool pool;
 

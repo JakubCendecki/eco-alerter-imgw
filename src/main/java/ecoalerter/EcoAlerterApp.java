@@ -18,6 +18,11 @@ import ecoalerter.util.AppLogger;
 import ecoalerter.util.PathResolver;
 import org.apache.logging.log4j.Logger;
 
+import java.io.File;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
@@ -54,12 +59,19 @@ public final class EcoAlerterApp {
     private static volatile TaskSchedulerManager scheduler;
     private static volatile ScheduleConfig       scheduleConfig;
     private static volatile PathResolver         pathResolver;
+    
+    private static FileLock lock;
+    private static FileChannel channel;
 
     // -------------------------------------------------------------------------
     // main
     // -------------------------------------------------------------------------
 
     public static void main(String[] args) {
+    	if (!lockInstance()) {
+    		System.exit(0);
+    	}
+    	
         AppLogger.logAppStart(VERSION);
         Runtime.getRuntime().addShutdownHook(new Thread(
                 EcoAlerterApp::performShutdown, "eco-shutdown-hook"));
@@ -103,6 +115,25 @@ public final class EcoAlerterApp {
         }
     }
 
+    /**
+     * Wymusza tylko 1 działającą instancję aplikacji
+     */
+    private static boolean lockInstance() {
+        try {
+            File file = new File(System.getProperty("user.home"), ".my_app.lock");
+            channel = new RandomAccessFile(file, "rw").getChannel();
+            lock = channel.tryLock();
+            if (lock == null) {
+                return false;
+            }
+            // Opcjonalnie: usuń plik przy zamknięciu (choć i tak blokada zniknie po zabiciu procesu)
+            file.deleteOnExit();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    
     // -------------------------------------------------------------------------
     // Konfiguracja
     // -------------------------------------------------------------------------

@@ -36,9 +36,9 @@ import java.util.concurrent.ExecutionException;
  * Panel zarządzania stacjami pomiarowymi.
  */
 public class StationManagerPanel extends JPanel implements NotificationService.AppEventListener {
-	private static final long serialVersionUID = -8429056874249512224L;
+    private static final long serialVersionUID = -8429056874249512224L;
 
-	private static final Logger log = AppLogger.get(StationManagerPanel.class);
+    private static final Logger log = AppLogger.get(StationManagerPanel.class);
 
     private static final String CARD_TABLE = "table";
     private static final String CARD_EMPTY = "empty";
@@ -46,8 +46,8 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
     private static final int BUTTON_GAP = 16;
 
     private final StationService          stationService;
-    private final DataCollectionService    dataCollectionService;
-    private final NotificationService      notificationService;
+    private final DataCollectionService  dataCollectionService;
+    private final NotificationService    notificationService;
 
     private final StationTable stationTable;
     private final JPanel       centerPanel;
@@ -55,24 +55,13 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
     private final JButton      editButton;
     private final JButton      refreshButton;
     private final JLabel       connectionBanner;
+    private final JLabel       summaryLabel; // NOWA ETYKIETA
 
     /**
-     * Stacje, które ostatnio raportowały błąd. Po przyjściu DATA_UPDATED dla
-     * danej stacji jej ID jest usuwane — banner sam się ukryje, gdy zbiór
-     * stanie się pusty. ConcurrentHashMap.newKeySet() bo modyfikujemy z EDT
-     * (przez onEvent dostarczany przez NotificationService) i ewentualnie
-     * innego wątku, jeśli notifikacje przyszłyby spoza EDT.
+     * Stacje, które ostatnio raportowały błąd.
      */
     private final Set<String> stationsWithErrors = ConcurrentHashMap.newKeySet();
 
-    /**
-     * @param stationService        serwis stacji — dodawanie/usuwanie/edycja
-     * @param dataCollectionService serwis danych — weryfikacja stacji w API,
-     *                              manualne odświeżenie
-     * @param notificationService   szyna zdarzeń — panel zarówno publikuje
-     *                              ({@code STATIONS_CHANGED}) jak i subskrybuje
-     *                              ({@code DATA_UPDATED}, {@code STATION_ERROR})
-     */
     public StationManagerPanel(StationService stationService,
                                DataCollectionService dataCollectionService,
                                NotificationService notificationService) {
@@ -87,11 +76,6 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         stationTable.getTable().getSelectionModel().addListSelectionListener(
                 e -> updateButtonStates());
 
-        // Dwuklik w wiersz → edycja stacji (taki sam efekt jak kliknięcie
-        // przycisku „Edytuj..."). Sprawdzamy że klik trafił w jakiś wiersz
-        // (rowAtPoint < 0 oznacza klik w puste miejsce pod tabelą) i że nie
-        // jest to kolumna z checkboxem aktywności — tam dwuklik powinien
-        // zostać przy normalnym toggle-toggle, nie otwierać dialogu edycji.
         stationTable.getTable().addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -102,7 +86,7 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
 
                 int viewCol = stationTable.getTable().columnAtPoint(e.getPoint());
                 Class<?> colClass = stationTable.getTable().getColumnClass(viewCol);
-                if (colClass == Boolean.class) return; // checkbox „Aktywna" — nie edytuj
+                if (colClass == Boolean.class) return;
 
                 if (stationTable.getSelectedStation() != null) {
                     onEditStation();
@@ -143,44 +127,56 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         centerPanel.add(buildEmptyStatePanel(), CARD_EMPTY);
         add(centerPanel, BorderLayout.CENTER);
 
+        // INICJALIZACJA DOLNEGO PASKA PODSUMOWANIA
+        this.summaryLabel = new JLabel(" ");
+        add(buildSummaryPanel(), BorderLayout.SOUTH);
+
         notificationService.addListener(this);
         updateButtonStates();
         showEmptyState();
         reloadStations();
     }
 
-    /**
-     * Budowa panelu wyświetlanego, gdy nie istnieje żadna dodana stacja —
-     * zamiast pustej tabeli z nagłówkami, samo centrowane Microcopy
-     * kierujące do przycisku „Dodaj stację...".
-     */
+    /** Tworzy estetyczny panel dla etykiety podsumowania */
+    private JPanel buildSummaryPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(4, 10, 6, 10));
+        panel.add(summaryLabel, BorderLayout.WEST);
+        return panel;
+    }
+
+    /** NOWA METODA: Aktualizuje tekst z liczbą stacji i liczbą aktywnych */
+    private void updateSummary(List<Station> stations) {
+        if (stations == null || stations.isEmpty()) {
+            summaryLabel.setText("Brak stacji");
+            return;
+        }
+
+        int total = stations.size();
+        long activeCount = stations.stream().filter(Station::isActive).count();
+
+        summaryLabel.setText(String.format("Stacje: %d (%d aktywne)", total, activeCount));
+    }
+
     private JPanel buildEmptyStatePanel() {
         JPanel panel = new JPanel(new GridBagLayout());
-
         JLabel label = new JLabel(
                 "Brak dodanych stacji. Kliknij \u201eDodaj stację...\u201d, aby zacząć monitorowanie.");
         label.setFont(label.getFont().deriveFont(Font.PLAIN, 14f));
         label.setForeground(Color.GRAY);
-
         panel.add(label);
         return panel;
     }
 
-    /** Przełącza centerPanel na widok pustego stanu (Microcopy zamiast tabeli). */
     private void showEmptyState() {
         ((CardLayout) centerPanel.getLayout()).show(centerPanel, CARD_EMPTY);
+        updateSummary(List.of()); // Czyszczenie podsumowania w stanie pustym
     }
 
-    /** Przełącza centerPanel z powrotem na tabelę stacji. */
     private void showTableState() {
         ((CardLayout) centerPanel.getLayout()).show(centerPanel, CARD_TABLE);
     }
 
-    /**
-     * Przeładowuje listę stacji z repozytorium w tle i odświeża tabelę.
-     * Bezpieczne do wywołania wielokrotnie — kolejne wywołania nie kolidują,
-     * bo SwingWorker wykonuje się asynchronicznie i tylko aktualizuje model.
-     */
     public void reloadStations() {
         new SwingWorker<List<Station>, Void>() {
             @Override
@@ -193,6 +189,10 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
                 try {
                     List<Station> stations = get();
                     stationTable.setStations(stations);
+                    
+                    // AKTUALIZACJA PODSUMOWANIA PO ZAŁADOWANIU Z BAZY/PLIKU
+                    updateSummary(stations);
+
                     if (stations.isEmpty()) {
                         showEmptyState();
                     } else {
@@ -205,24 +205,10 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         }.execute();
     }
 
-    // -------------------------------------------------------------------------
-    // Akcje przycisków
-    // -------------------------------------------------------------------------
-
-    /** Obsługa kliknięcia „Dodaj stację..." — otwiera dialog i przekazuje wynik do weryfikacji. */
     private void onAddStation() {
         AddStationDialog.showAddDialog(this).ifPresent(this::verifyAndAddStation);
     }
 
-    /**
-     * Weryfikuje w API IMGW, czy podana stacja faktycznie istnieje, zanim
-     * zostanie zapisana w repozytorium. Zapobiega dodaniu literówki w ID,
-     * która nigdy nie zwróciłaby żadnych danych pomiarowych.
-     *
-     * Zwykłe 404 (brak stacji) skutkuje komunikatem ostrzegawczym i przerwaniem
-     * operacji. Błąd sieciowy/serwera skutkuje innym komunikatem, ale też
-     * nie dodaje stacji — użytkownik może spróbować ponownie później.
-     */
     private void verifyAndAddStation(Station station) {
         new SwingWorker<Boolean, Void>() {
             private String errorMessage;
@@ -268,14 +254,6 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         }.execute();
     }
 
-    /**
-     * Faktyczny zapis nowej stacji po pomyślnej weryfikacji w API.
-     *
-     * Specjalnie obsługuje {@link DuplicateStationException} (rozpakowany
-     * z {@link ExecutionException} rzucanego przez {@code SwingWorker.get()})
-     * — pokazuje go jako Info, nie Error, bo duplikat to świadoma blokada
-     * biznesowa, a nie awaria.
-     */
     private void saveNewStation(Station station) {
         new SwingWorker<Void, Void>() {
             @Override
@@ -291,10 +269,6 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
                     reloadStations();
                     notificationService.notifyStationsChanged();
                 } catch (ExecutionException ex) {
-                    // SwingWorker zawija wyjątek z doInBackground w ExecutionException —
-                    // żeby rozróżnić „stacja już istnieje" (informacja) od prawdziwego
-                    // błędu zapisu, sprawdzamy konkretny typ wyjątku przed pokazaniem
-                    // okna jako ERROR_MESSAGE.
                     Throwable cause = ex.getCause();
                     if (cause instanceof DuplicateStationException dup) {
                         JOptionPane.showMessageDialog(StationManagerPanel.this,
@@ -311,11 +285,6 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         }.execute();
     }
 
-    /**
-     * Obsługa „Usuń". Pyta o potwierdzenie i kasuje stację razem z historią
-     * danych (kasowanie plików meteo/hydro jest w
-     * {@link ecoalerter.persistence.file.FileRepository#deleteStation}).
-     */
     private void onRemoveStation() {
         Station selected = stationTable.getSelectedStation();
         if (selected == null) return;
@@ -346,19 +315,10 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         }.execute();
     }
 
-    /**
-     * Callback z checkboxa „Aktywna" w wierszu tabeli — przerzuca decyzję
-     * do {@link #setStationActive(Station, boolean)}.
-     */
     private void onActiveToggled(Station station, boolean newActive) {
         setStationActive(station, newActive);
     }
 
-    /**
-     * Aktywuje lub dezaktywuje stację w tle (SwingWorker). Niezależnie od
-     * sukcesu odświeża tabelę i powiadamia inne panele o zmianie — żeby
-     * GUI pozostało spójne nawet po częściowej awarii.
-     */
     private void setStationActive(Station station, boolean active) {
         new SwingWorker<Void, Void>() {
             @Override
@@ -385,10 +345,6 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         }.execute();
     }
 
-    /**
-     * Obsługa „Edytuj...". Otwiera dialog edycji wstępnie wypełniony wartościami
-     * wybranej stacji; po zatwierdzeniu zapisuje przez {@link StationService#editStation}.
-     */
     private void onEditStation() {
         Station selected = stationTable.getSelectedStation();
         if (selected == null) return;
@@ -414,12 +370,6 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
                 }.execute());
     }
 
-    /**
-     * Obsługa „Odśwież". Wykonuje pojedyncze pobranie z API poza harmonogramem
-     * dla aktualnie wybranej stacji. Błąd jest pokazywany jako warning
-     * (np. „brak danych z API") — manualne odświeżenie nie powinno wieszać
-     * UI ani wymuszać akcji na użytkowniku.
-     */
     private void onRefreshNow() {
         Station selected = stationTable.getSelectedStation();
         if (selected == null) return;
@@ -447,7 +397,7 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
             }
 
             @Override
-            protected void done() {
+            public void done() {
                 refreshButton.setEnabled(true);
                 try {
                     if (!get()) {
@@ -462,15 +412,6 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         }.execute();
     }
 
-    /**
-     * Reaguje na zdarzenia z {@link NotificationService}: aktualizuje kolumnę
-     * statusu w tabeli, śledzi stacje z błędami w {@link #stationsWithErrors}
-     * i pokazuje/ukrywa banner braku połączenia.
-     *
-     * Dodatkowo obsługuje {@code STATIONS_CHANGED} — przeładowuje tabelę
-     * gdy ktoś z zewnątrz (np. SettingsPanel po „Wyczyść wszystkie dane")
-     * zmienił listę stacji.
-     */
     @Override
     public void onEvent(NotificationService.AppEvent event) {
         switch (event.getType()) {
@@ -483,36 +424,22 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
                 updateConnectionBanner();
             }
             case STATIONS_CHANGED -> {
-                // Lista stacji została zmieniona przez zewnętrzną akcję
-                // (np. clear-all w Ustawieniach) — czyścimy stan błędów,
-                // bo nieaktualne ID nie powinny utrzymywać czerwonego bannera,
-                // i przeładowujemy tabelę.
                 stationsWithErrors.clear();
                 updateConnectionBanner();
                 reloadStations();
             }
-            default -> { /* inne typy zdarzeń nie dotyczą tego panelu */ }
+            default -> { }
         }
     }
 
-    /**
-     * Aktualizuje zbiór stacji z błędami na podstawie typu zdarzenia.
-     * STATION_ERROR — dodaj; DATA_UPDATED — usuń (znaczy, że stacja znów działa).
-     */
     private void trackStationStatus(String stationId, NotificationService.AppEvent event) {
         switch (event.getType()) {
             case STATION_ERROR -> stationsWithErrors.add(stationId);
             case DATA_UPDATED  -> stationsWithErrors.remove(stationId);
-            default -> { /* nie dotyczy */ }
+            default -> { }
         }
     }
 
-    /**
-     * Pokazuje czerwony banner nad tabelą gdy przynajmniej jedna stacja ma
-     * błąd komunikacji. Pomaga w typowym scenariuszu „start offline" —
-     * status w kolumnie tabeli jest łatwy do przeoczenia, banner u góry
-     * jednoznacznie sygnalizuje brak połączenia z IMGW i co z tym zrobić.
-     */
     private void updateConnectionBanner() {
         if (stationsWithErrors.isEmpty()) {
             connectionBanner.setVisible(false);
@@ -528,15 +455,11 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
 
         connectionBanner.setText(text);
         connectionBanner.setOpaque(true);
-        connectionBanner.setBackground(new Color(0xFFEBEE)); // jasnoczerwone tło (Material Red 50)
-        connectionBanner.setForeground(new Color(0xB71C1C)); // ciemnoczerwony tekst (Material Red 900)
+        connectionBanner.setBackground(new Color(0xFFEBEE));
+        connectionBanner.setForeground(new Color(0xB71C1C));
         connectionBanner.setVisible(true);
     }
 
-    /**
-     * Wyciąga {@code stationId} ze zdarzenia. Obsługuje dwa formaty payloadu
-     * (Station lub StationStatus); dla pozostałych zwraca null.
-     */
     private String extractStationId(NotificationService.AppEvent event) {
         Object payload = event.getPayload();
         if (payload instanceof Station s) return s.getId();
@@ -544,14 +467,6 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         return null;
     }
 
-    // -------------------------------------------------------------------------
-    // Pomocnicze
-    // -------------------------------------------------------------------------
-
-    /**
-     * Włącza/wyłącza przyciski akcji zależnie od tego, czy w tabeli jest zaznaczony wiersz.
-     * Niektóre operacje (Usuń, Edytuj, Odśwież) wymagają wybranej stacji — bez selekcji nie powinny być aktywne.
-     */
     private void updateButtonStates() {
         boolean hasSelection = stationTable.getSelectedStation() != null;
         removeButton.setEnabled(hasSelection);
@@ -559,10 +474,6 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
         refreshButton.setEnabled(hasSelection);
     }
 
-    /**
-     * Loguje błąd i pokazuje go w dialogu jako ERROR_MESSAGE.
-     * Format komunikatu: „{context}:\n{e.getMessage()}".
-     */
     private void showError(String context, Exception e) {
         log.error("{}: {}", context, e.getMessage(), e);
         JOptionPane.showMessageDialog(this,
@@ -570,11 +481,6 @@ public class StationManagerPanel extends JPanel implements NotificationService.A
                 "Błąd", JOptionPane.ERROR_MESSAGE);
     }
 
-    /**
-     * Wyrejestrowuje panel z {@link NotificationService}.
-     * Wywołać przy zamykaniu zakładki lub aplikacji, żeby zapobiec wyciekowi
-     * referencji do listenera.
-     */
     public void dispose() {
         notificationService.removeListener(this);
     }

@@ -13,21 +13,28 @@ import ecoalerter.persistence.PersistenceException;
 import ecoalerter.util.AppLogger;
 import org.apache.logging.log4j.Logger;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
  * Jedno zadanie cykliczne schedulera — pobiera i zapisuje dane dla jednej stacji.
  *
- * Uruchamiane cyklicznie przez TaskSchedulerManager w wątku puli. Obsługuje
- * zarówno stacje METEO jak i HYDRO na podstawie Station.getType().
+ * <h2>Znacznik czasu pobrania</h2>
+ * Tuż przed zapisem każdego rekordu ustawiamy {@code fetchedAt = now()}.
+ * Pole {@code timestamp} (czas pomiaru po stronie IMGW) zostaje nietknięte —
+ * jest ustawione przez parser API. Różnica między oboma znacznikami pokazuje
+ * opóźnienie między pomiarem a jego pobraniem.
  *
- * Wszystkie wyjątki są łapane wewnątrz run() — zadanie nigdy nie zabija wątku
- * puli ScheduledExecutorService. Błąd jest logowany i zgłaszany przez listener.
- *
- * Wyniki są przekazywane przez FetchListener — TaskSchedulerManager
- * może rejestrować odbiorców do aktualizacji GUI, statystyk itp.
+ * <h2>Auto-update nazwy z API (apiName)</h2>
+ * Po każdym pomyślnym pobraniu, jeśli {@code stationName} z API różni się
+ * od zapisanego {@link Station#getApiName()}, aktualizujemy stację w repo.
+ * Dzięki temu kolumna „Nazwa stacji" w GUI sama się wypełnia po pierwszym
+ * fetchu — użytkownik dodaje stację po samym ID, a poprawna nazwa
+ * (np. „WARSZAWA-BIELANY" zamiast tymczasowej nazwy własnej) pojawia się
+ * sama po pierwszym cyklu schedulera.
  */
 public class FetchTask implements Runnable {
 
@@ -90,14 +97,8 @@ public class FetchTask implements Runnable {
         this.listeners      = new ArrayList<>();
     }
 
-    // -------------------------------------------------------------------------
-    // Zarządzanie listenerami
-    // -------------------------------------------------------------------------
-
     /**
      * Rejestruje odbiorcę wyników tego zadania.
-     *
-     * @param listener odbiorca do zarejestrowania
      */
     public void addListener(FetchListener listener) {
         if (listener != null) listeners.add(listener);
@@ -147,7 +148,6 @@ public class FetchTask implements Runnable {
             notifyError(msg);
 
         } catch (Exception e) {
-            // Łapiemy wszystko — wyjątek nie może zabić wątku puli
             long durationMs = System.currentTimeMillis() - startMs;
             String msg = "Nieoczekiwany błąd: " + e.getClass().getSimpleName() + ": " + e.getMessage();
             log.error("Nieoczekiwany błąd w cyklu stacji {}: ", station.getId(), e);
@@ -159,14 +159,6 @@ public class FetchTask implements Runnable {
 
     /**
      * Pojedynczy cykl pobierania danych meteo dla stacji obsługiwanej przez ten FetchTask.
-     *
-     * Sprawdza nadrzędny przełącznik {@code DataTypeConfig.isMeteoEnabled()} — jeśli kategoria
-     * jest globalnie wyłączona, pomija pobranie w ogóle (nie obciąża API). Indywidualne pola
-     * (temperatura, wiatr, opady) NIE są filtrowane przed zapisem — scheduler zapisuje wszystko,
-     * co dostarczyło API, a o widoczności kolumn decyduje warstwa widoku (DataViewPanel).
-     *
-     * @throws ApiException         gdy żądanie HTTP się nie powiedzie
-     * @throws PersistenceException gdy zapis do repozytorium się nie powiedzie
      */
     private void runMeteo() throws ApiException, PersistenceException {
         if (!dataTypeConfig.isMeteoEnabled()) {
@@ -189,18 +181,15 @@ public class FetchTask implements Runnable {
             return;
         }
 
+        data.setFetchedAt(LocalDateTime.now());
         repository.saveMeteo(data);
         log.info("Zapisano meteo: {}", data.toDisplayString());
+
+        maybeUpdateApiName(data.getStationName());
     }
 
     /**
      * Pojedynczy cykl pobierania danych hydro dla stacji obsługiwanej przez ten FetchTask.
-     *
-     * Polityka zapisu identyczna jak w {@link #runMeteo()} — pełne pola zapisywane bez
-     * filtrowania, GUI decyduje o widoczności kolumn na bieżąco z DataTypeConfig.
-     *
-     * @throws ApiException         gdy żądanie HTTP się nie powiedzie
-     * @throws PersistenceException gdy zapis do repozytorium się nie powiedzie
      */
     private void runHydro() throws ApiException, PersistenceException {
         if (!dataTypeConfig.isHydroEnabled()) {
@@ -223,8 +212,45 @@ public class FetchTask implements Runnable {
             return;
         }
 
+        data.setFetchedAt(LocalDateTime.now());
         repository.saveHydro(data);
         log.info("Zapisano hydro: {}", data.toDisplayString());
+
+        maybeUpdateApiName(data.getStationName());
+    }
+
+    /**
+     * Aktualizuje {@link Station#setApiName(String)} jeśli API zwróciło inną
+     * nazwę niż dotychczas zapisana — typowo to się dzieje przy pierwszym
+     * cyklu schedulera dla nowo dodanej stacji (gdzie apiName było puste lub
+     * równe nazwie własnej wpisanej przez użytkownika).
+     *
+     * Zapis stacji jest robiony jako osobna operacja (nie w jednej transakcji
+     * z {@code saveMeteo}/{@code saveHydro}) — repository nie ma API
+     * transakcyjnego dla operacji crossowych, a tu pojedynczy upsert stacji
+     * jest atomowy sam w sobie.
+     *
+     * @param fetchedApiName nazwa zwrócona przez API w bieżącym cyklu
+     */
+    private void maybeUpdateApiName(String fetchedApiName) {
+        if (fetchedApiName == null || fetchedApiName.isBlank()) return;
+        if (Objects.equals(station.getApiName(), fetchedApiName)) return;
+
+        String previous = station.getApiName();
+        station.setApiName(fetchedApiName);
+
+        try {
+            repository.saveStation(station);
+            log.debug("Zaktualizowano apiName stacji {} -> '{}' (poprzednio: '{}')",
+                    station.getId(), fetchedApiName, previous);
+        } catch (PersistenceException e) {
+            // Nie chcemy żeby błąd zapisu nazwy zawalił cały cykl — pomiary
+            // są już bezpiecznie zapisane. Wycofujemy zmianę w pamięci żeby
+            // następny cykl spróbował znów.
+            station.setApiName(previous);
+            log.warn("Nie udało się zaktualizować apiName dla stacji {}: {}",
+                    station.getId(), e.getMessage());
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -250,10 +276,6 @@ public class FetchTask implements Runnable {
             }
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Getter
-    // -------------------------------------------------------------------------
 
     public Station getStation() {
         return station;

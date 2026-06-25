@@ -27,6 +27,7 @@ import javax.swing.border.TitledBorder;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.awt.FlowLayout;
+import java.util.Hashtable;
 
 /**
  * Panel ustawień aplikacji.
@@ -36,24 +37,20 @@ import java.awt.FlowLayout;
  *   <li><b>Persystencja danych</b> — wybór trybu (Plik / Baza). Wymaga restartu.</li>
  *   <li><b>Zakres monitorowanych danych</b> — które pola pomiarów pokazywać
  *       w widoku. Stosowane natychmiast (DataViewPanel czyta na bieżąco).</li>
- *   <li><b>Harmonogram</b> — domyślny interwał dla nowo planowanych stacji.</li>
+ *   <li><b>Harmonogram</b> — domyślny interwał (1-60 min) dla nowo planowanych stacji.</li>
  *   <li><b>API IMGW</b> — timeout, liczba ponowień.</li>
  *   <li><b>Dziennik zdarzeń</b> — poziom logowania.</li>
  *   <li><b>Czyszczenie historii</b> — usunięcie starych pomiarów lub wszystkich danych.</li>
  *   <li><b>Reset</b> — przywrócenie ustawień fabrycznych (wymaga restartu).</li>
  * </ul>
- *
- * Wzorzec dla zmian wymagających restartu: dialog Yes/No → przy „Tak" zapis
- * i wywołanie zarejestrowanej akcji restartu, przy „Nie" przywrócenie kontrolek
- * (revert) bez zapisu.
  */
 public class SettingsPanel extends JPanel {
-	private static final long serialVersionUID = 2781647122217999954L;
+    private static final long serialVersionUID = 2781647122217999954L;
 
-	private static final Logger log = AppLogger.get(SettingsPanel.class);
+    private static final Logger log = AppLogger.get(SettingsPanel.class);
 
-    private static final int MIN_INTERVAL_MINUTES = 5;
-    private static final int MAX_INTERVAL_MINUTES = 30;
+    private static final int MIN_INTERVAL_MINUTES = 1;
+    private static final int MAX_INTERVAL_MINUTES = 60;
 
     private final AppConfig              config;
     private final DataCollectionService  dataCollectionService;
@@ -68,6 +65,7 @@ public class SettingsPanel extends JPanel {
     private JCheckBox precipitationBox;
     private JCheckBox waterLevelBox;
     private JCheckBox waterTemperatureBox;
+    private JCheckBox hydroPhenomenaBox;
 
     private JSlider  defaultIntervalSlider;
 
@@ -77,27 +75,8 @@ public class SettingsPanel extends JPanel {
     private JSpinner                cleanupDaysSpinner;
 
     private Runnable onRestartRequested;
-
-    /**
-     * Wywoływany po zatwierdzeniu zmian w sekcji „Zakres monitorowanych danych".
-     * Pozwala innym panelom (DataViewPanel) odświeżyć swój widok bez restartu —
-     * np. od razu pokazać/ukryć kolumnę temperatury po przełączeniu jej checkboxa.
-     * Wstrzykiwany z MainWindow, bo SettingsPanel nie powinien znać DataViewPanel.
-     */
     private Runnable onDataTypeConfigChanged;
 
-    /**
-     * @param config                konfiguracja aplikacji — czytana i zapisywana
-     *                              przez tę zakładkę
-     * @param dataCollectionService serwis danych — używany przez „Usuń dane
-     *                              starsze niż..."
-     * @param stationService        serwis stacji — używany przez „Wyczyść
-     *                              wszystkie dane" (musi usunąć też stacje
-     *                              i zatrzymać scheduler)
-     * @param notificationService   szyna zdarzeń — po wyczyszczeniu danych
-     *                              wysyłamy {@code STATIONS_CHANGED}, żeby
-     *                              inne panele odświeżyły swoje widoki
-     */
     public SettingsPanel(AppConfig config,
                          DataCollectionService dataCollectionService,
                          StationService stationService,
@@ -128,24 +107,10 @@ public class SettingsPanel extends JPanel {
         loadCurrentValues();
     }
 
-    /**
-     * Rejestruje akcję wykonywaną po potwierdzeniu restartu aplikacji
-     * — typowo zamknięcie głównego okna w bezpiecznej kolejności.
-     * Wywoływane przez MainWindow po skonstruowaniu panelu.
-     *
-     * @param action akcja restartu; null wyłącza automatyczne zamknięcie
-     */
     public void setOnRestartRequested(Runnable action) {
         this.onRestartRequested = action;
     }
 
-    /**
-     * Rejestruje akcję wywoływaną po zatwierdzeniu zmian zakresu monitorowanych
-     * danych — typowo {@code dataViewPanel::refreshCurrentView}.
-     * Bez ustawienia panel nadal działa, ale DataViewPanel nie odświeży się
-     * automatycznie (kolumny zaktualizują się dopiero przy następnym kliknięciu
-     * „Odśwież" lub zmianie wybranej stacji).
-     */
     public void setOnDataTypeConfigChanged(Runnable action) {
         this.onDataTypeConfigChanged = action;
     }
@@ -154,7 +119,6 @@ public class SettingsPanel extends JPanel {
     // Sekcja: persystencja danych (wymaga restartu)
     // -------------------------------------------------------------------------
 
-    /** Buduje sekcję wyboru trybu zapisu (Plik vs Baza danych). */
     private JPanel buildPersistenceSection() {
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
@@ -187,11 +151,6 @@ public class SettingsPanel extends JPanel {
         return wrapTitled("Sposób zapisywania danych", content);
     }
 
-    /**
-     * Obsługa kliknięcia „Zastosuj" w sekcji persystencji. Jeśli wybór nie
-     * różni się od bieżącego trybu — komunikat „brak zmian" i koniec.
-     * W przeciwnym razie pyta o potwierdzenie restartu.
-     */
     private void onApplyPersistence() {
         PersistenceMode chosenMode  = fileModeRadio.isSelected()
                 ? PersistenceMode.FILE : PersistenceMode.DATABASE;
@@ -212,7 +171,6 @@ public class SettingsPanel extends JPanel {
         );
     }
 
-    /** Synchronizuje radio buttony z bieżącą wartością {@code config.getPersistenceMode()}. */
     private void loadPersistenceRadios() {
         PersistenceMode mode = config.getPersistenceMode();
         fileModeRadio.setSelected(mode == PersistenceMode.FILE);
@@ -223,7 +181,12 @@ public class SettingsPanel extends JPanel {
     // Sekcja: zakres monitorowanych danych (zastosowanie natychmiastowe)
     // -------------------------------------------------------------------------
 
-    /** Buduje sekcję checkboxów decydujących, które pola pomiarów pokazywać w widoku. */
+    /**
+     * Buduje sekcję checkboxów decydujących, które pola pomiarów pokazywać w widoku.
+     * Hydro ma teraz trzy przełączniki — stan wody, temperatura wody i zjawiska
+     * (lód + zarastanie razem, bo wszystkie zjawiska prezentowane są w GUI
+     * w jednej kolumnie „Zjawiska").
+     */
     private JPanel buildDataTypeSection() {
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
@@ -235,19 +198,16 @@ public class SettingsPanel extends JPanel {
         precipitationBox     = plainCheckbox("Opady");
         waterLevelBox        = plainCheckbox("Stan wody");
         waterTemperatureBox  = plainCheckbox("Temperatura wody");
+        hydroPhenomenaBox    = plainCheckbox("Zjawiska (lód, zarastanie)");
 
         grid.add(boldLabel("Dane meteo"));
         grid.add(boldLabel("Dane hydro"));
-        grid.add(temperatureBox);
-        grid.add(waterLevelBox);
-        grid.add(windBox);
-        grid.add(waterTemperatureBox);
-        grid.add(precipitationBox);
-        grid.add(new JLabel());
+        grid.add(temperatureBox);    grid.add(waterLevelBox);
+        grid.add(windBox);           grid.add(waterTemperatureBox);
+        grid.add(precipitationBox);  grid.add(hydroPhenomenaBox);
 
         JButton applyButton = new JButton("Zastosuj");
         applyButton.addActionListener(e -> onApplyDataTypeConfig());
-
 
         JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 2));
         buttonRow.add(applyButton);
@@ -258,18 +218,6 @@ public class SettingsPanel extends JPanel {
         return wrapTitled("Zakres monitorowanych danych", content);
     }
 
-    /**
-     * Zapisuje zaznaczone checkboxy do konfiguracji w pamięci (i automatycznie
-     * na dysk przez AppConfig.setRaw). Zmiany są stosowane natychmiast — zarówno
-     * scheduler (który teraz ZAWSZE zapisuje wszystkie pola dostarczone przez API),
-     * jak i DataViewPanel (który przy każdym odświeżeniu czyta DataTypeConfig
-     * na bieżąco z AppConfig) nie potrzebują restartu.
-     *
-     * Jeśli żaden checkbox nie zmienił swojego stanu względem zapisanej konfiguracji,
-     * informujemy o tym i nic nie robimy — żeby nie spamować pliku konfiguracji
-     * identycznymi wartościami ani nie wprowadzać użytkownika w błąd komunikatem
-     * o „zastosowaniu zmian", których nie było.
-     */
     private void onApplyDataTypeConfig() {
         var current = config.getDataTypeConfig();
         boolean hasChanges =
@@ -277,7 +225,8 @@ public class SettingsPanel extends JPanel {
              || current.isWindEnabled()             != windBox.isSelected()
              || current.isPrecipitationEnabled()    != precipitationBox.isSelected()
              || current.isWaterLevelEnabled()       != waterLevelBox.isSelected()
-             || current.isWaterTemperatureEnabled() != waterTemperatureBox.isSelected();
+             || current.isWaterTemperatureEnabled() != waterTemperatureBox.isSelected()
+             || current.isHydroPhenomenaEnabled()   != hydroPhenomenaBox.isSelected();
 
         if (!hasChanges) {
             JOptionPane.showMessageDialog(this, "Brak zmian do zastosowania.",
@@ -285,33 +234,26 @@ public class SettingsPanel extends JPanel {
             return;
         }
 
-        // Pola data.meteo.enabled i data.hydro.enabled zostają na true — kategoria
-        // jest efektywnie wyłączona, jeśli WSZYSTKIE jej checkboxy są odznaczone
-        // (i wtedy DataViewPanel po prostu nie pokazuje żadnej z jej kolumn).
         config.setRaw("data.meteo.enabled", "true");
         config.setRaw("data.hydro.enabled", "true");
-        config.setRaw("data.meteo.temperature",    String.valueOf(temperatureBox.isSelected()));
-        config.setRaw("data.meteo.wind",           String.valueOf(windBox.isSelected()));
-        config.setRaw("data.meteo.precipitation",  String.valueOf(precipitationBox.isSelected()));
+        config.setRaw("data.meteo.temperature",      String.valueOf(temperatureBox.isSelected()));
+        config.setRaw("data.meteo.wind",             String.valueOf(windBox.isSelected()));
+        config.setRaw("data.meteo.precipitation",    String.valueOf(precipitationBox.isSelected()));
         config.setRaw("data.hydro.waterLevel",       String.valueOf(waterLevelBox.isSelected()));
         config.setRaw("data.hydro.waterTemperature", String.valueOf(waterTemperatureBox.isSelected()));
+        config.setRaw("data.hydro.phenomena",        String.valueOf(hydroPhenomenaBox.isSelected()));
 
         log.info("Zakres monitorowanych danych zaktualizowany");
 
-        // Powiadom DataViewPanel, żeby przebudował kolumny i przeładował dane
-        // dla aktualnie wybranej stacji — bez tego do następnego ręcznego
-        // odświeżenia użytkownik widzi stary układ kolumn, mimo że zapis już
-        // przeszedł.
         if (onDataTypeConfigChanged != null) {
             onDataTypeConfigChanged.run();
         }
 
         JOptionPane.showMessageDialog(this,
-                "Zakres monitorowanych danych zaktualizowany.\n",
+                "Zakres monitorowanych danych zaktualizowany.",
                 "Zastosowano", JOptionPane.INFORMATION_MESSAGE);
     }
 
-    /** Synchronizuje checkboxy z bieżącym {@code config.getDataTypeConfig()}. */
     private void loadDataTypeCheckboxes() {
         var dataTypeConfig = config.getDataTypeConfig();
         temperatureBox.setSelected(dataTypeConfig.isTemperatureEnabled());
@@ -319,6 +261,7 @@ public class SettingsPanel extends JPanel {
         precipitationBox.setSelected(dataTypeConfig.isPrecipitationEnabled());
         waterLevelBox.setSelected(dataTypeConfig.isWaterLevelEnabled());
         waterTemperatureBox.setSelected(dataTypeConfig.isWaterTemperatureEnabled());
+        hydroPhenomenaBox.setSelected(dataTypeConfig.isHydroPhenomenaEnabled());
     }
 
     // -------------------------------------------------------------------------
@@ -326,35 +269,54 @@ public class SettingsPanel extends JPanel {
     // -------------------------------------------------------------------------
 
     /**
-     * Buduje sekcję z suwakiem domyślnego interwału dla nowo planowanych stacji.
-     * Zakres slidera 5-30 minut — wartości spoza są clampowane przez
-     * {@link #clampToMinuteSlider(int)}.
+     * Buduje sekcję z suwakiem domyślnego interwału (1-60 min) dla nowo
+     * planowanych stacji. Major ticks z labelami przy 1, 5, 10, 15, ..., 60;
+     * minor ticks co 1 minutę. Live readout obok suwaka pokazuje aktualną
+     * wartość ("1 min", "5 min", ...).
      */
     private JPanel buildSchedulerSection() {
         JPanel content = new JPanel(new java.awt.BorderLayout(8, 0));
 
         int currentMinutes = clampToMinuteSlider(config.getSchedulerDefaultIntervalSeconds() / 60);
-        defaultIntervalSlider = new JSlider(MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES, currentMinutes);
-        defaultIntervalSlider.setMajorTickSpacing(5);
-        defaultIntervalSlider.setSnapToTicks(true);
-        defaultIntervalSlider.setPaintTicks(true);
-        defaultIntervalSlider.setPaintLabels(true);
-        defaultIntervalSlider.setPreferredSize(new java.awt.Dimension(320, 45));
+        defaultIntervalSlider = buildIntervalSlider(currentMinutes);
 
         JButton applyButton = new JButton("Zastosuj");
         applyButton.addActionListener(e -> onApplyDefaultInterval());
 
-        content.add(new JLabel("Jak często sprawdzać nowe stacje (min):"), java.awt.BorderLayout.WEST);
-        content.add(defaultIntervalSlider, java.awt.BorderLayout.CENTER);
+        JPanel sliderRow = new JPanel(new java.awt.BorderLayout(8, 0));
+        sliderRow.add(defaultIntervalSlider, java.awt.BorderLayout.CENTER);
+
+        content.add(new JLabel("Jak często sprawdzać nowe stacje:"), java.awt.BorderLayout.WEST);
+        content.add(sliderRow, java.awt.BorderLayout.CENTER);
         content.add(applyButton, java.awt.BorderLayout.EAST);
 
         return wrapTitled("Harmonogram", content);
     }
 
     /**
-     * Obsługa „Zastosuj" w sekcji harmonogramu. Zapisuje wartość w sekundach
-     * do konfiguracji — kolejne planowanie zadań od razu używa nowej wartości.
+     * Buduje slider interwału 1-60 min z labelami przy 1, 5, 10, ..., 60.
+     * Bez własnego LabelTable JSlider z minimum=1 i majorTickSpacing=5 rysuje
+     * labelki od 1 co 5 (1, 6, 11, 16, ...) — odsunięte od pełnych dziesiątek.
      */
+    private JSlider buildIntervalSlider(int initialMinutes) {
+        JSlider slider = new JSlider(MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES, initialMinutes);
+        slider.setMajorTickSpacing(5);
+        slider.setMinorTickSpacing(1);
+        slider.setSnapToTicks(true);
+        slider.setPaintTicks(true);
+        slider.setPaintLabels(true);
+
+        Hashtable<Integer, JLabel> labels = new Hashtable<>();
+        labels.put(1, new JLabel("1"));
+        for (int v = 5; v <= 60; v += 5) {
+            labels.put(v, new JLabel(String.valueOf(v)));
+        }
+        slider.setLabelTable(labels);
+
+        slider.setPreferredSize(new java.awt.Dimension(360, 50));
+        return slider;
+    }
+
     private void onApplyDefaultInterval() {
         int    newMinutes = defaultIntervalSlider.getValue();
         int    newSeconds = newMinutes * 60;
@@ -370,12 +332,6 @@ public class SettingsPanel extends JPanel {
                 "Zastosowano", JOptionPane.INFORMATION_MESSAGE);
     }
 
-    /**
-     * Ogranicza wartość w minutach do zakresu obsługiwanego przez slider
-     * ({@value #MIN_INTERVAL_MINUTES}-{@value #MAX_INTERVAL_MINUTES}).
-     * Istniejące interwały zapisane przed wprowadzeniem slidera mogły
-     * przekraczać ten zakres — są tu po prostu przycinane do nowego limitu.
-     */
     private int clampToMinuteSlider(int minutes) {
         return Math.max(MIN_INTERVAL_MINUTES, Math.min(MAX_INTERVAL_MINUTES, minutes));
     }
@@ -384,7 +340,6 @@ public class SettingsPanel extends JPanel {
     // Sekcja: konfiguracja API (zastosowanie natychmiastowe)
     // -------------------------------------------------------------------------
 
-    /** Buduje sekcję z timeoutem i liczbą ponowień dla żądań do API IMGW. */
     private JPanel buildApiSection() {
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
@@ -413,7 +368,6 @@ public class SettingsPanel extends JPanel {
         return wrapTitled("Połączenie z serwerem IMGW", content);
     }
 
-    /** Zapisuje timeout i liczbę ponowień do konfiguracji — kolejne żądania używają nowych wartości. */
     private void onApplyApiSettings() {
         int newTimeout = (Integer) apiTimeoutSpinner.getValue();
         int newRetries = (Integer) apiRetrySpinner.getValue();
@@ -436,11 +390,6 @@ public class SettingsPanel extends JPanel {
     // Sekcja: logowanie (zastosowanie natychmiastowe)
     // -------------------------------------------------------------------------
 
-    /**
-     * Buduje sekcję z wyborem poziomu logowania.
-     * Zmiana jest stosowana natychmiast przez {@link AppLogger#setRootLevel(String)}
-     * — nie wymaga restartu, nie wymaga przycisku „Zastosuj".
-     */
     private JPanel buildLoggingSection() {
         JPanel panel = titledPanel("Dziennik zdarzeń", new GridLayout(1, 2, 8, 4));
 
@@ -467,16 +416,10 @@ public class SettingsPanel extends JPanel {
     // Sekcja: czyszczenie historii danych
     // -------------------------------------------------------------------------
 
-    /**
-     * Buduje sekcję czyszczenia z dwoma operacjami:
-     * cleanup wg wieku (zachowaj N dni) i cleanup wszystkiego (z dwuetapowym
-     * potwierdzeniem).
-     */
     private JPanel buildCleanupSection() {
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
 
-        // --- Rząd 1: cleanup wg wieku ---
         JPanel byAgeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
         cleanupDaysSpinner = new JSpinner(new SpinnerNumberModel(90, 1, 3650, 30));
         JButton cleanupOldButton = new JButton("Usuń dane starsze niż...");
@@ -485,11 +428,9 @@ public class SettingsPanel extends JPanel {
         byAgeRow.add(cleanupDaysSpinner);
         byAgeRow.add(cleanupOldButton);
 
-        // --- Rząd 2: cleanup wszystkiego ---
         JPanel allRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
         JButton clearAllButton = new JButton("Wyczyść wszystkie dane pomiarowe");
         clearAllButton.addActionListener(e -> onClearAllRequested());
-
         allRow.add(clearAllButton);
 
         content.add(byAgeRow);
@@ -498,23 +439,10 @@ public class SettingsPanel extends JPanel {
         return wrapTitled("Czyszczenie historii danych", content);
     }
 
-    /**
-     * Obsługa „Wyczyść wszystkie dane...". Pyta o potwierdzenie dwuetapowo
-     * — najpierw Yes/No, potem trzeba wpisać słowo „USUŃ" — żeby uniknąć
-     * przypadkowego skasowania wszystkiego.
-     *
-     * Operacja kasuje WSZYSTKO oprócz ustawień aplikacji: stacje, ich
-     * dane pomiarowe, ostrzeżenia, a także zatrzymuje wszystkie zaplanowane
-     * fetchy w schedulerze (bez tego pula wątków próbowałaby dalej odpytywać
-     * API dla nieistniejących już stacji). Po sukcesie odpala
-     * {@link #onDataTypeConfigChanged} (czyszczenie zakładki Dane) oraz
-     * {@code notifyStationsChanged()} (StationManagerPanel i DataViewPanel
-     * przeładowują listę stacji).
-     */
     private void onClearAllRequested() {
         int confirm = JOptionPane.showConfirmDialog(this,
                 "Czy na pewno chcesz usunąć WSZYSTKIE stacje wraz z ich danymi\n" +
-                "pomiarowymi i ostrzeżeniami? Tej operacji nie można cofnąć.\n\n",
+                "pomiarowymi? Tej operacji nie można cofnąć.\n\n",
                 "Potwierdzenie usunięcia wszystkich danych",
                 JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
         if (confirm != JOptionPane.YES_OPTION) return;
@@ -533,11 +461,6 @@ public class SettingsPanel extends JPanel {
         new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() throws Exception {
-                // stationService.clearAll() ogarnia:
-                //   - anulowanie zadań w schedulerze dla każdej stacji,
-                //   - skasowanie plików pomiarów (meteo, hydro),
-                //   - skasowanie plików ostrzeżeń,
-                //   - skasowanie stations.json.
                 stationService.clearAll();
                 return null;
             }
@@ -548,20 +471,14 @@ public class SettingsPanel extends JPanel {
                     get();
                     log.info("Wszystkie stacje i dane zostały wyczyszczone");
 
-                    // Po wyczyszczeniu stacji — StationManagerPanel i DataViewPanel
-                    // muszą przeładować swoją listę stacji. Wysyłka STATIONS_CHANGED
-                    // załatwia oba (DataViewPanel już to słucha, StationManagerPanel
-                    // — po fix-ie w onEvent też).
                     notificationService.notifyStationsChanged();
 
-                    // Dodatkowo czyszczenie aktualnej zawartości tabeli Dane —
-                    // to samo wywołanie co po zmianie zakresu monitorowanych danych.
                     if (onDataTypeConfigChanged != null) {
                         onDataTypeConfigChanged.run();
                     }
 
                     JOptionPane.showMessageDialog(SettingsPanel.this,
-                            "Wszystkie stacje wraz z ich danymi i ostrzeżeniami zostały usunięte.",
+                            "Wszystkie stacje wraz z ich danymi zostały usunięte.",
                             "Zakończono", JOptionPane.INFORMATION_MESSAGE);
                 } catch (Exception e) {
                     log.error("Błąd czyszczenia wszystkich danych: {}", e.getMessage(), e);
@@ -573,10 +490,6 @@ public class SettingsPanel extends JPanel {
         }.execute();
     }
 
-    /**
-     * Obsługa „Usuń dane starsze niż...". Pyta o potwierdzenie, a operacja
-     * leci przez SwingWorker — nie blokuje EDT przy dużej historii.
-     */
     private void onCleanupRequested() {
         int days = (Integer) cleanupDaysSpinner.getValue();
 
@@ -614,7 +527,6 @@ public class SettingsPanel extends JPanel {
     // Sekcja: reset ustawień (wymaga restartu)
     // -------------------------------------------------------------------------
 
-    /** Buduje sekcję z przyciskiem resetującym wszystkie ustawienia do wartości domyślnych. */
     private JPanel buildResetSection() {
         JPanel content = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 4));
 
@@ -631,15 +543,10 @@ public class SettingsPanel extends JPanel {
         return wrapTitled("Reset", content);
     }
 
-    /**
-     * Obsługa „Resetuj ustawienia". Po potwierdzeniu przywraca wszystkie
-     * ustawienia do domyślnych i wywołuje akcję restartu — bez restartu
-     * większość zmian (np. tryb persystencji) nie mogłaby zostać zastosowana.
-     */
     private void onResetSettings() {
         int confirm = JOptionPane.showConfirmDialog(this,
                 "Reset przywróci wszystkie ustawienia do wartości domyślnych\n" +
-                "i WYMAGA natychmiastowego zamknięcia aplikacji.\n" +
+                "i WYMAGA zamknięcia aplikacji.\n" +
                 "Trzeba będzie uruchomić ją ponownie ręcznie.\n\n" +
                 "Czy kontynuować?",
                 "Reset ustawień — wymagany restart aplikacji",
@@ -664,37 +571,20 @@ public class SettingsPanel extends JPanel {
     // Wczytanie wartości początkowych z konfiguracji
     // -------------------------------------------------------------------------
 
-    /**
-     * Wczytuje wszystkie kontrolki ze stanu konfiguracji. Wywoływane w
-     * konstruktorze, po resecie ustawień, oraz przy revercie zmian wymagających
-     * restartu.
-     */
     private void loadCurrentValues() {
         loadPersistenceRadios();
         loadDataTypeCheckboxes();
         logLevelCombo.setSelectedItem(config.getLogLevel());
         apiTimeoutSpinner.setValue(config.getApiTimeoutSeconds());
         apiRetrySpinner.setValue(config.getApiRetryCount());
-        defaultIntervalSlider.setValue(clampToMinuteSlider(config.getSchedulerDefaultIntervalSeconds() / 60));
+        int minutes = clampToMinuteSlider(config.getSchedulerDefaultIntervalSeconds() / 60);
+        defaultIntervalSlider.setValue(minutes);
     }
 
     // -------------------------------------------------------------------------
     // Wspólny wzorzec: zmiana wymagająca restartu
     // -------------------------------------------------------------------------
 
-    /**
-     * Pyta użytkownika o potwierdzenie zmiany wymagającej restartu aplikacji.
-     *
-     * Po „Tak": wykonuje {@code applyAction} (zapis do AppConfig) i wywołuje
-     * zarejestrowaną akcję restartu (zamknięcie aplikacji w bezpiecznej
-     * kolejności) — użytkownik musi uruchomić aplikację ponownie ręcznie.
-     *
-     * Po „Nie": wykonuje {@code revertAction}, które przywraca poprzedni
-     * stan kontrolek GUI bez zapisywania niczego do konfiguracji.
-     *
-     * @param applyAction  zapisuje nowe wartości do AppConfig
-     * @param revertAction przywraca kontrolki GUI do stanu zgodnego z aktualną konfiguracją
-     */
     private void confirmRestartOrRevert(Runnable applyAction, Runnable revertAction) {
         int choice = JOptionPane.showConfirmDialog(this,
                 "Ta zmiana wymaga restartu aplikacji, aby w pełni zadziałać.\n" +
@@ -723,10 +613,6 @@ public class SettingsPanel extends JPanel {
     // Metody pomocnicze (UI)
     // -------------------------------------------------------------------------
 
-    /**
-     * Tworzy panel z pogrubionym tytułem w obramowaniu — wariant z bezpośrednim
-     * przekazaniem LayoutManagera (bez wewnętrznego wrappera).
-     */
     private JPanel titledPanel(String title, java.awt.LayoutManager layout) {
         JPanel panel = new JPanel(layout);
         TitledBorder border = BorderFactory.createTitledBorder(title);
@@ -735,11 +621,6 @@ public class SettingsPanel extends JPanel {
         return panel;
     }
 
-    /**
-     * Owija dowolny istniejący panel w obramowanie z tytułem.
-     * Używany dla sekcji, których wewnętrzny layout jest złożony
-     * (np. {@link BoxLayout}) i nie warto go odtwarzać w {@link #titledPanel}.
-     */
     private JPanel wrapTitled(String title, JPanel content) {
         JPanel wrapper = new JPanel(new java.awt.BorderLayout());
         wrapper.add(content, java.awt.BorderLayout.CENTER);
@@ -751,21 +632,12 @@ public class SettingsPanel extends JPanel {
         return wrapper;
     }
 
-    /**
-     * Tworzy pogrubioną etykietę używaną jako nagłówek sekcji checkboxów
-     * (np. „Dane meteo" nad polami temperatury/wiatru/opadów).
-     */
     private JLabel boldLabel(String text) {
         JLabel label = new JLabel(text);
         label.setFont(label.getFont().deriveFont(Font.BOLD));
         return label;
     }
 
-    /**
-     * Tworzy checkbox bez żadnego listenera — wyłącznie jako stan UI.
-     * Wartość jest odczytywana ręcznie przez wywołujący kod (np. przycisk
-     * „Zastosuj"), nie jest zapisywana automatycznie na każdy klik.
-     */
     private JCheckBox plainCheckbox(String label) {
         return new JCheckBox(label, true);
     }
